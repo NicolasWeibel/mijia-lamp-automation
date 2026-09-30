@@ -1,0 +1,31 @@
+# Dependencies tested/designed for Python 3.12 on Windows.
+# python-miio itself is installed separately with --no-deps while preparing the runtime,
+# so pip does not try to compile netifaces on Python 3.12.
+astral==3.2
+PyYAML==6.0.3
+android_backup==0.2.0
+appdirs==1.4.4
+attrs==26.1.0
+click==8.5.0
+construct==2.10.70
+croniter==6.2.4
+cryptography==50.0.1
+defusedxml==0.7.1
+micloud==0.6
+pytz==2026.4
+tqdm==4.70.1
+zeroconf==0.151.5
+ifaddr==0.2.0
+python-dateutil==2.9.0.post0
+six==1.17.0
+cffi==2.1.1
+pycparser==3.0
+tzlocal==5.4.4
+tzdata==2026.4
+colorama==0.4.6
+requests==2.34.2
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.20
+urllib3==2.8.0
+pycryptodome==3.23.0

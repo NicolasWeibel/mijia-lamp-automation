@@ -1,0 +1,73 @@
+name: Bug report
+description: Reportar un comportamiento reproducible de MijiaLamp
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No pegues tokens, `mi-tokens.json`, `secrets/token.dpapi.json` ni logs sin revisar.
+
+  - type: input
+    id: version
+    attributes:
+      label: Versión de MijiaLamp
+      placeholder: "3.1.3"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Versión de Windows
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+
+  - type: input
+    id: python
+    attributes:
+      label: Versión de Python
+      placeholder: "3.12.x"
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Modelo miIO de la lámpara
+      placeholder: "yeelink.light.lamp22"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamiento esperado
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamiento observado
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Pasos para reproducir
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs redactados
+      description: Revisá manualmente que no haya secretos o datos privados.
+      render: text

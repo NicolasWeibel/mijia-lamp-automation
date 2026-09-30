@@ -1,0 +1,118 @@
+name: Build release artifact
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify annotated release tag on main
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          if ((git cat-file -t $env:GITHUB_REF) -ne 'tag') { throw "La release requiere un tag anotado." }
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar main." }
+          git merge-base --is-ancestor HEAD refs/remotes/origin/main
+          if ($LASTEXITCODE -ne 0) { throw "El tag no apunta a un commit incluido en main." }
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install release checks and timezone data
+        run: python -m pip install "tzdata==2026.4" "ruff==0.16.9" "pip-audit==2.10.1"
+
+      - name: Verify repository
+        run: python scripts/check_repository.py
+
+      - name: Python correctness gate
+        run: ruff check --select E9,F63,F7,F82 .
+
+      - name: Audit pinned runtime dependencies
+        run: |
+          python -m pip_audit -r requirements.lock.txt --no-deps --disable-pip --progress-spinner=off
+          python -m pip_audit -r requirements.windows.lock.txt --no-deps --disable-pip --progress-spinner=off
+          python -m pip_audit -r requirements.miio.lock.txt --no-deps --disable-pip --progress-spinner=off
+
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: ./scripts/check-powershell.ps1
+
+      - name: Prepare hardened Windows runtime
+        shell: pwsh
+        run: ./prepare-service-runtime.ps1 -Recreate -AllowElevatedForCI
+
+      - name: Build Portable + Service ZIPs
+        shell: pwsh
+        run: ./scripts/build-release.ps1 -IncludePreparedRuntime
+
+      - name: Verify release ZIPs against runtime and source manifests
+        run: python scripts/verify_release.py release --require-runtime
+
+      - name: Build dependency SBOM
+        shell: pwsh
+        run: |
+          python -m pip install "cyclonedx-bom==7.3.1"
+          New-Item -ItemType Directory -Force release | Out-Null
+          $combined = "release/requirements-sbom.txt"
+          Get-Content requirements.lock.txt, requirements.windows.lock.txt, requirements.miio.lock.txt |
+            Where-Object { $_ -and -not $_.Trim().StartsWith('#') } |
+            Set-Content -Encoding ascii $combined
+          cyclonedx-py requirements $combined --output-format JSON --output-file "release/MijiaLamp-${env:RELEASE_TAG}.sbom.cdx.json"
+          Remove-Item $combined
+
+      - name: Build dependency wheel manifest
+        shell: pwsh
+        run: ./scripts/build-dependency-manifest.ps1 -OutputDir release/dependencies
+
+      - name: Attest release provenance
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: 'release/*.zip'
+
+      - name: Attest SBOM
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: 'release/*.zip'
+          sbom-path: 'release/MijiaLamp-${{ github.ref_name }}.sbom.cdx.json'
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mijialamp-release
+          path: |
+            release/*.zip
+            release/*.sha256
+            release/*.json
+            release/dependencies/*.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$env:RELEASE_TAG" release/*.zip release/*.sha256 release/*.json release/dependencies/*.txt --generate-notes --verify-tag

@@ -1,0 +1,383 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MijiaLamp v3 configuration",
+  "description": "Strict public configuration schema. Runtime/cache/secret fields do not belong here.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "lamp_ip",
+    "expected_model",
+    "device_id",
+    "timezone",
+    "latitude",
+    "longitude",
+    "elevation_meters",
+    "wind_down_start",
+    "pre_sleep_start",
+    "bedtime",
+    "light_profiles"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "const": 3
+    },
+    "lamp_ip": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "expected_model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "expected_mac": {
+      "type": "string",
+      "pattern": "^$|^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$"
+    },
+    "location_name": {
+      "type": "string"
+    },
+    "latitude": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "elevation_meters": {
+      "type": "number",
+      "minimum": -500,
+      "maximum": 9000
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1
+    },
+    "night_mode": {
+      "type": "boolean"
+    },
+    "night_start": {
+      "enum": [
+        "sunrise",
+        "sunset",
+        "dawn",
+        "dusk"
+      ]
+    },
+    "night_end": {
+      "enum": [
+        "sunrise",
+        "sunset",
+        "dawn",
+        "dusk"
+      ]
+    },
+    "night_start_offset_minutes": {
+      "type": "integer",
+      "minimum": -360,
+      "maximum": 360
+    },
+    "night_end_offset_minutes": {
+      "type": "integer",
+      "minimum": -360,
+      "maximum": 360
+    },
+    "wind_down_start": {
+      "$ref": "#/$defs/hhmm"
+    },
+    "pre_sleep_start": {
+      "$ref": "#/$defs/hhmm"
+    },
+    "bedtime": {
+      "$ref": "#/$defs/hhmm"
+    },
+    "pause_until_tomorrow_time": {
+      "$ref": "#/$defs/hhmm"
+    },
+    "profile_transition_mode": {
+      "enum": [
+        "stepped",
+        "continuous"
+      ]
+    },
+    "profile_transition_ms": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "power_transition_ms": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "profile_brightness_tolerance": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 20
+    },
+    "profile_kelvin_tolerance": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 500
+    },
+    "light_profiles": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evening",
+        "wind_down",
+        "pre_sleep",
+        "after_bedtime",
+        "manual_day"
+      ],
+      "properties": {
+        "evening": {
+          "$ref": "#/$defs/profile"
+        },
+        "wind_down": {
+          "$ref": "#/$defs/profile"
+        },
+        "pre_sleep": {
+          "$ref": "#/$defs/profile"
+        },
+        "after_bedtime": {
+          "$ref": "#/$defs/profile"
+        },
+        "manual_day": {
+          "$ref": "#/$defs/profile"
+        }
+      }
+    },
+    "manual_day_override_max_hours": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 72
+    },
+    "manual_off_override_minutes": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1440
+    },
+    "external_change_policy": {
+      "enum": [
+        "enforce",
+        "respect_for_minutes",
+        "respect_until_next_profile"
+      ]
+    },
+    "external_change_respect_minutes": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1440
+    },
+    "sync_interval_seconds": {
+      "type": "number",
+      "minimum": 10,
+      "maximum": 3600
+    },
+    "network_change_poll_seconds": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 300
+    },
+    "display_state_stale_minutes": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 1440
+    },
+    "unknown_display_policy": {
+      "enum": [
+        "off",
+        "hold",
+        "assume_on"
+      ]
+    },
+    "display_event_debounce_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30
+    },
+    "display_off_confirm_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 60
+    },
+    "suppress_off_after_start_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 120
+    },
+    "suppress_off_after_resume_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 120
+    },
+    "respect_session_lock": {
+      "type": "boolean"
+    },
+    "off_on_session_lock": {
+      "type": "boolean"
+    },
+    "on_on_session_unlock": {
+      "type": "boolean"
+    },
+    "respect_user_presence": {
+      "type": "boolean"
+    },
+    "off_when_user_inactive": {
+      "type": "boolean"
+    },
+    "ignore_remote_sessions": {
+      "type": "boolean"
+    },
+    "network_wait_seconds_on": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 120
+    },
+    "network_wait_seconds_off": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30
+    },
+    "network_wait_seconds_periodic": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30
+    },
+    "miio_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.2,
+      "maximum": 10
+    },
+    "miio_fast_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 2
+    },
+    "suspend_off_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 1.0
+    },
+    "suspend_event_deadline_seconds": {
+      "type": "number",
+      "minimum": 0.2,
+      "maximum": 3.0
+    },
+    "retries": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10
+    },
+    "retry_delay_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 30
+    },
+    "discovery_enabled": {
+      "type": "boolean"
+    },
+    "discovery_neighbor_enabled": {
+      "type": "boolean"
+    },
+    "discovery_mdns_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 15
+    },
+    "discovery_scan_enabled": {
+      "type": "boolean"
+    },
+    "discovery_scan_prefix": {
+      "type": "integer",
+      "const": 24
+    },
+    "discovery_scan_workers": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 32
+    },
+    "discovery_scan_timeout_seconds": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 2
+    },
+    "discovery_cooldown_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "discovery_backoff_max_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "discovery_full_scan_cooldown_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "tray_enabled": {
+      "type": "boolean"
+    },
+    "notifications_enabled": {
+      "type": "boolean"
+    },
+    "notify_after_failure_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 86400
+    },
+    "event_log_enabled": {
+      "type": "boolean"
+    },
+    "log_max_bytes": {
+      "type": "integer",
+      "minimum": 65536,
+      "maximum": 104857600
+    },
+    "log_backup_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 50
+    }
+  },
+  "$defs": {
+    "hhmm": {
+      "type": "string",
+      "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kelvin",
+        "brightness"
+      ],
+      "properties": {
+        "kelvin": {
+          "type": "integer",
+          "minimum": 2700,
+          "maximum": 6500
+        },
+        "brightness": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        }
+      }
+    }
+  }
+}

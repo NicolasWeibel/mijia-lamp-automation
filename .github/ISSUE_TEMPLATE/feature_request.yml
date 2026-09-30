@@ -1,0 +1,40 @@
+name: Feature request
+description: Proponer una mejora o nuevo comportamiento
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema o necesidad
+      description: ¿Qué caso de uso querés resolver?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Propuesta
+      description: Explicá el comportamiento deseado.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Windows power/display events
+        - miIO / device communication
+        - Scheduling / policy
+        - Installer / Task Scheduler
+        - Security / secrets
+        - Documentation / tooling
+        - Other
+    validations:
+      required: true

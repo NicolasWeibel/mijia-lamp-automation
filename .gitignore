@@ -1,0 +1,58 @@
+# Local configuration and secrets
+config.json
+secrets/
+mi-tokens.json
+**/mi-tokens.json
+*.dpapi.json
+.env
+.env.*
+!.env.example
+
+# Runtime state
+data/
+logs/
+runtime_state*.json
+runtime_state*.tmp
+*.log
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Packaging
+build/
+dist/
+*.egg-info/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local release artifacts
+release/
+*.zip
+
+# Legacy/local backups
+backup-legacy-*/
+*.bak
+*.sarif
+sbom*.json
+*.spdx.json
+*.cdx.json
+pip-audit-report.json
+
+# Prepared local runtimes / wheel caches
+prepared-runtime/
+wheelhouse/
