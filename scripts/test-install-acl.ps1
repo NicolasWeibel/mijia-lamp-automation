@@ -52,3 +52,4 @@ try {
 }
 
 Write-Host "Installer ACL helpers: OK"
+exit 0
