@@ -2,8 +2,8 @@ import json
 import unittest
 from datetime import datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from mijialamp.config import validate_config
 from mijialamp.profiles import resolve_profile
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class ProfileTests(unittest.TestCase):
     def test_stepped_manual_day(self):
-        with open(ROOT / "config.example.json", "r", encoding="utf-8") as fh:
+        with open(ROOT / "config.example.json", encoding="utf-8") as fh:
             cfg = validate_config(json.load(fh))
         cfg["profile_transition_mode"] = "stepped"
         p = resolve_profile(cfg, manual_day=True)
@@ -21,7 +21,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(p.brightness, 45)
 
     def test_continuous_interpolates(self):
-        with open(ROOT / "config.example.json", "r", encoding="utf-8") as fh:
+        with open(ROOT / "config.example.json", encoding="utf-8") as fh:
             cfg = validate_config(json.load(fh))
         cfg["timezone"] = "UTC"
         cfg["profile_transition_mode"] = "continuous"

@@ -27,9 +27,8 @@ class ServiceSecurityTests(unittest.TestCase):
             with patch("mijialamp.service_meta.SERVICE_META_PATH", path):
                 self.assertEqual(load_authorized_user_sid(), "S-1-5-21-1-2-3-1001")
             path.write_text(json.dumps({"authorized_user_sid": "not-a-sid"}))
-            with patch("mijialamp.service_meta.SERVICE_META_PATH", path):
-                with self.assertRaises(ConfigError):
-                    load_authorized_user_sid()
+            with patch("mijialamp.service_meta.SERVICE_META_PATH", path), self.assertRaises(ConfigError):
+                load_authorized_user_sid()
 
 
 if __name__ == "__main__":

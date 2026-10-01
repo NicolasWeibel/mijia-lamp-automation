@@ -98,9 +98,12 @@ def calculate_desired(cfg: dict, state: dict, *, night_now: bool | None = None) 
     if state.get("display_pending_off"):
         return DesiredState("hold", None, "display off pending confirmation")
 
-    if bool(cfg.get("respect_session_lock", True)) and bool(cfg.get("off_on_session_lock", True)):
-        if state.get("session_locked") is True:
-            return DesiredState("off", None, "Windows session locked")
+    if (
+        bool(cfg.get("respect_session_lock", True))
+        and bool(cfg.get("off_on_session_lock", True))
+        and state.get("session_locked") is True
+    ):
+        return DesiredState("off", None, "Windows session locked")
 
     if bool(cfg.get("respect_user_presence", True)):
         presence = state.get("user_presence")

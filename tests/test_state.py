@@ -17,7 +17,7 @@ class StateStoreTests(unittest.TestCase):
             self.assertTrue(state["display_on"])
             self.assertTrue(state["manual_off_active"])
             self.assertEqual(state["marker"], "two")
-            with open(root / "runtime.json", "r", encoding="utf-8") as fh:
+            with open(root / "runtime.json", encoding="utf-8") as fh:
                 json.load(fh)
             self.assertEqual(list(root.glob(".*.tmp")), [])
 

@@ -169,9 +169,12 @@ class ServiceCoreTests(unittest.TestCase):
         self.assertFalse(any(call[0] == "sync" for call in controller.calls))
 
     def test_start_is_idempotent_and_invalidates_interactive_state(self):
-        core, controller = self.make_core({"sync_interval_seconds": 3600, "network_change_poll_seconds": 3600})
-        with patch.object(core, "_periodic_loop", return_value=None), patch.object(
-            core, "_network_loop", return_value=None
+        core, controller = self.make_core(
+            {"sync_interval_seconds": 3600, "network_change_poll_seconds": 3600}
+        )
+        with (
+            patch.object(core, "_periodic_loop", return_value=None),
+            patch.object(core, "_network_loop", return_value=None),
         ):
             core.start()
             first = core._periodic_thread

@@ -8,7 +8,7 @@ import sys
 
 from .config import load_config
 from .errors import ConfigError, SecretError
-from .ipc import IPCError, PORTABLE_PIPE_NAME, PipeClient
+from .ipc import PORTABLE_PIPE_NAME, IPCError, PipeClient
 from .secrets_store import (
     SCOPE_CURRENT_USER,
     SCOPE_LOCAL_MACHINE,

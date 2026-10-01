@@ -95,6 +95,5 @@ class AgentSuspendTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["not_after_monotonic"], 100.75)
 
 
-
 if __name__ == "__main__":
     unittest.main()

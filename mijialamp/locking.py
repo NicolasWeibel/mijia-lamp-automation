@@ -1,6 +1,8 @@
-import os
+import contextlib
+import sys
 import time
 from pathlib import Path
+from typing import BinaryIO
 
 from .errors import LockTimeoutError
 
@@ -12,57 +14,59 @@ class FileLock:
         self.path = Path(path)
         self.timeout = float(timeout)
         self.poll = float(poll)
-        self._fh = None
+        self._fh: BinaryIO | None = None
 
     def acquire(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         deadline = time.monotonic() + max(0.0, self.timeout)
-        self._fh = open(self.path, "a+b")
-        if self._fh.tell() == 0:
-            self._fh.write(b"0")
-            self._fh.flush()
+        # The handle stays open until release() so the OS lock remains held.
+        fh = open(self.path, "a+b")  # noqa: SIM115
+        self._fh = fh
+        if fh.tell() == 0:
+            fh.write(b"0")
+            fh.flush()
         while True:
             try:
                 self._lock_now()
                 return self
-            except OSError:
+            except OSError as exc:
                 if time.monotonic() >= deadline:
                     self.release()
-                    raise LockTimeoutError(f"Timeout acquiring lock: {self.path}")
+                    raise LockTimeoutError(f"Timeout acquiring lock: {self.path}") from exc
                 time.sleep(self.poll)
 
     def _lock_now(self):
-        self._fh.seek(0)
-        if os.name == "nt":
+        fh = self._fh
+        if fh is None:
+            raise RuntimeError("Lock file is not open")
+        fh.seek(0)
+        if sys.platform == "win32":
             import msvcrt
 
-            msvcrt.locking(self._fh.fileno(), msvcrt.LK_NBLCK, 1)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
         else:
             import fcntl
 
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
 
     def release(self):
-        if self._fh is None:
+        fh = self._fh
+        if fh is None:
             return
         try:
-            self._fh.seek(0)
-            if os.name == "nt":
+            fh.seek(0)
+            if sys.platform == "win32":
                 import msvcrt
 
-                try:
-                    msvcrt.locking(self._fh.fileno(), msvcrt.LK_UNLCK, 1)
-                except OSError:
-                    pass
+                with contextlib.suppress(OSError):
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
             else:
                 import fcntl
 
-                try:
-                    fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
-                except OSError:
-                    pass
+                with contextlib.suppress(OSError):
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
         finally:
-            self._fh.close()
+            fh.close()
             self._fh = None
 
     def __enter__(self):

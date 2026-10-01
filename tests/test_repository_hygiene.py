@@ -10,16 +10,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class RepositoryHygieneTests(unittest.TestCase):
     def test_release_tag_must_match_project_version(self):
-        with patch.dict("os.environ", {"GITHUB_REF": "refs/tags/v0.0.0"}):
-            with self.assertRaises(SystemExit):
-                check_hygiene()
+        with patch.dict("os.environ", {"GITHUB_REF": "refs/tags/v0.0.0"}), self.assertRaises(SystemExit):
+            check_hygiene()
 
     def test_private_config_is_not_tracked(self):
         self.assertFalse((ROOT / "config.json").exists())
         self.assertTrue((ROOT / "config.example.json").is_file())
 
     def test_example_config_has_no_token(self):
-        with open(ROOT / "config.example.json", "r", encoding="utf-8") as fh:
+        with open(ROOT / "config.example.json", encoding="utf-8") as fh:
             cfg = json.load(fh)
         self.assertNotIn("token", cfg)
 

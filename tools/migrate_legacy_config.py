@@ -10,6 +10,8 @@ from pathlib import Path
 # explicitly so the local mijialamp package is importable from any working directory.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import contextlib
+
 from mijialamp.secrets_store import (
     SCOPE_CURRENT_USER,
     SCOPE_LOCAL_MACHINE,
@@ -26,7 +28,7 @@ def migrate(path: Path, *, token_scope: str = SCOPE_LOCAL_MACHINE) -> tuple[bool
     The v3 runtime rejects unknown keys so typos do not silently change behaviour.
     Known legacy fields are therefore mapped or removed here before config-check.
     """
-    with open(path, "r", encoding="utf-8-sig") as fh:
+    with open(path, encoding="utf-8-sig") as fh:
         cfg = json.load(fh)
     if not isinstance(cfg, dict):
         raise ValueError("config.json debe contener un objeto JSON")
@@ -64,10 +66,8 @@ def migrate(path: Path, *, token_scope: str = SCOPE_LOCAL_MACHINE) -> tuple[bool
 
     if "scan_max_workers" in cfg:
         if "discovery_scan_workers" not in cfg:
-            try:
+            with contextlib.suppress(Exception):
                 cfg["discovery_scan_workers"] = max(1, min(32, int(cfg["scan_max_workers"])))
-            except Exception:
-                pass
         cfg.pop("scan_max_workers", None)
         changed = True
 

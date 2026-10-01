@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from mijialamp.cli import build_parser
+from mijialamp.errors import SecretError
 from mijialamp.secrets_store import (
     SCOPE_CURRENT_USER,
     SCOPE_LOCAL_MACHINE,
@@ -31,7 +32,7 @@ class DualModeTests(unittest.TestCase):
             self.assertEqual(token_metadata(path)["scope"], SCOPE_CURRENT_USER)
             with patch("mijialamp.secrets_store._unprotect", return_value=token.encode("ascii")):
                 self.assertEqual(load_token(path, expected_scope=SCOPE_CURRENT_USER), token)
-                with self.assertRaises(Exception):
+                with self.assertRaises(SecretError):
                     load_token(path, expected_scope=SCOPE_LOCAL_MACHINE)
 
     def test_legacy_machine_scope_is_normalized(self):
@@ -98,7 +99,6 @@ class DualModeTests(unittest.TestCase):
         self.assertIn("verify-bundledruntime", setup)
         self.assertIn("runtime-manifest.json", setup)
         self.assertIn("runtime-manifest.json", build)
-
 
 
 if __name__ == "__main__":

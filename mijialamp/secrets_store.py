@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import ctypes
 import json
 import os
@@ -135,7 +136,7 @@ def validate_token(token: str) -> str:
 
 def token_metadata(path: Path = TOKEN_PATH) -> dict:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             payload = json.load(fh)
         if not isinstance(payload, dict):
             raise ValueError("secret root is not an object")
@@ -184,7 +185,7 @@ def load_token(
     expected_scope: str | None = None,
 ) -> str:
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             payload = json.load(fh)
         scope = _normalize_scope(str(payload.get("scope", _LEGACY_MACHINE_SCOPE)))
         if expected_scope is not None and scope != _normalize_scope(expected_scope):
@@ -225,7 +226,5 @@ def migrate_token_scope(
 
 
 def clear_token(path: Path = TOKEN_PATH) -> None:
-    try:
+    with contextlib.suppress(FileNotFoundError):
         Path(path).unlink()
-    except FileNotFoundError:
-        pass
