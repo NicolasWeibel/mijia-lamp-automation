@@ -16,7 +16,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('ci-{0}', github.sha) }}
 
     steps:
       - name: Checkout

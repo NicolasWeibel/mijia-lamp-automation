@@ -14,6 +14,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 - Corregido el arranque del Agent/Tray en ambos modos.
 - Corregida la normalización de rutas del manifiesto durante la preparación e instalación Service.
 - El manifiesto de source ya no incluye caches Python que se excluyen del ZIP.
+- El build manual usa un nombre de SBOM seguro cuando la rama contiene `/`.
 
 ### Security
 
