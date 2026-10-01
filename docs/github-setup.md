@@ -8,11 +8,11 @@
 4. Desde la carpeta `mijia-lamp-automation`, agregá el remoto del repositorio vacío y subí solamente `main`:
 
    ```powershell
-   git remote add origin https://github.com/OWNER/mijia-lamp-automation.git
+   git remote add origin https://github.com/NicolasWeibel/mijia-lamp-automation.git
    git push -u origin main
    ```
 
-   Reemplazá `OWNER` por tu usuario u organización. No uses `git push --tags` en la primera subida.
+   Este paso ya se completó para `NicolasWeibel/mijia-lamp-automation`; no repitas `git remote add` si `origin` ya existe. No uses `git push --tags` en la primera subida.
 5. Esperá a que terminen todos los jobs de CI. La primera release debe esperar también una prueba manual de Portable y Service con una lámpara real en Windows.
 6. Configurá protección de `main`, alertas de dependencias, protección contra secretos y reglas para tags `v*` antes de publicar la primera release.
 7. Publicá `v3.1.3` sólo cuando esas comprobaciones estén verdes. El workflow generará y verificará los ZIPs antes de crear la release.

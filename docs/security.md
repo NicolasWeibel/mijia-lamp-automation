@@ -84,7 +84,7 @@ El hash manifest protege integridad entre preparación e instalación, pero no s
 Procedimiento para una release oficial ya publicada:
 
 1. Descargá el ZIP Service desde la página Releases del repositorio que elegiste confiar. Conservá el ZIP sin modificar.
-2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R OWNER/REPO`, reemplazando `VERSION` y usando la identidad real del repositorio. La verificación debe terminar correctamente antes de extraer o elevar permisos.
+2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation`, reemplazando `VERSION` por la versión descargada. La verificación debe terminar correctamente antes de extraer o elevar permisos.
 3. Extraé el ZIP y ejecutá `install.ps1` desde una PowerShell elevada. El instalador comprueba hashes del runtime y código fuente antes y después de copiar; no usa Internet ni `pip`.
 4. Tras la instalación, ejecutá `security-check.ps1` y `lampctl.py doctor` antes de habilitar la automatización.
 

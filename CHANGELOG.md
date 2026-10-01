@@ -4,6 +4,11 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ## [3.1.3] - 2026-09-30
 
+### Changed
+
+- Ruff completo, formato y mypy pasan a ser controles obligatorios de CI y del workflow de release.
+- La documentación de verificación de artefactos identifica el repositorio público real.
+
 ### Fixed
 
 - Corregido el arranque del Agent/Tray en ambos modos.
