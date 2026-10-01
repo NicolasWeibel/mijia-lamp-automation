@@ -1,9 +1,10 @@
 # Dependencies tested/designed for Python 3.12 on Windows.
 # python-miio itself is installed separately with --no-deps while preparing the runtime,
 # so pip does not try to compile netifaces on Python 3.12.
+# android_backup and micloud are optional python-miio helpers for backup/cloud
+# token retrieval; this project imports tokens directly and omits both source-only packages.
 astral==3.2
 PyYAML==6.0.3
-android_backup==0.2.0
 appdirs==1.4.4
 attrs==26.1.0
 click==8.5.0
@@ -11,7 +12,6 @@ construct==2.10.70
 croniter==6.2.4
 cryptography==50.0.1
 defusedxml==0.7.1
-micloud==0.6
 pytz==2026.4
 tqdm==4.70.1
 zeroconf==0.151.5

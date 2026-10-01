@@ -22,6 +22,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 - La publicación audita todos los pins de runtime y genera el manifest de wheels a partir del wheelhouse realmente usado.
 - Las pruebas de Windows instalan `tzdata` antes de usar `ZoneInfo`; el tag de release debe coincidir con la versión del proyecto.
 - `python-miio` usa un único pin explícito compartido por preparación, instalación, auditoría y SBOM.
+- El runtime excluye los módulos opcionales `android_backup` y `micloud` de `python-miio`: no intervienen en el control local de la lámpara y no ofrecen wheels para Windows.
 
 ## [3.1.2] - 2026-09-30
 
