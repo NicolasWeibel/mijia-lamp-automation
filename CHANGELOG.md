@@ -18,6 +18,8 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Security
 
+- El instalador Service crea staging con ACL privadas desde el primer instante, valida propietario y permisos antes de ejecutar el runtime preparado y falla si `icacls` no puede proteger un archivo.
+- El directorio de backups se crea o valida antes de mover la instalación anterior; la prueba de Windows ejerce estas comprobaciones de ACL.
 - El workflow verifica hashes, contenido del runtime y código de los ZIPs antes de publicar la release.
 - Documentada la verificación de procedencia de una release oficial antes de elevar permisos.
 - La publicación audita todos los pins de runtime y genera el manifest de wheels a partir del wheelhouse realmente usado.

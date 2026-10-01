@@ -93,6 +93,10 @@ jobs:
         shell: pwsh
         run: ./scripts/check-powershell.ps1
 
+      - name: Exercise installer ACL protection
+        shell: pwsh
+        run: ./scripts/test-install-acl.ps1
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck

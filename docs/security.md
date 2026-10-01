@@ -30,6 +30,8 @@ El runtime resultante se hash-ea archivo por archivo. El instalador Admin verifi
 
 Tras instalar, `integrity-manifest.json` registra los archivos inmutables y `security-check.ps1` vuelve a verificar sus hashes.
 
+El directorio de staging nace con una ACL protegida que permite acceso sólo a Administradores y SYSTEM. El instalador verifica propietario y ACE antes de ejecutar el Python preparado, rechaza directorios anteriores con reparse points y detiene la instalación si `icacls` falla. El destino de backups se valida antes de detener el servicio anterior.
+
 Luego se copia a `C:\ProgramData\MijiaLamp\runtime`, donde el usuario sólo recibe `Read & Execute`.
 
 ### Elevación sin package manager

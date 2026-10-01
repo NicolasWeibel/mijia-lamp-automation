@@ -18,6 +18,8 @@ $OldTaskXml = $null
 $OldTaskEnabled = $false
 $Swapped = $false
 $PreparedManifest = $null
+$StagingCreated = $false
+$OldAutomationStopped = $false
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -25,6 +27,72 @@ function Assert-Administrator {
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw "Abrí PowerShell como Administrador y ejecutá install.ps1 nuevamente."
     }
+}
+
+function Assert-PrivateDirectory {
+    param([string]$Path)
+    $administrators = [Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
+    $system = [Security.Principal.SecurityIdentifier]::new("S-1-5-18")
+    $item = Get-Item -LiteralPath $Path -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "No es un directorio privado normal: $Path"
+    }
+    $actualAcl = Get-Acl -LiteralPath $Path
+    if ($actualAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $administrators.Value -or
+        -not $actualAcl.AreAccessRulesProtected) {
+        throw "Directorio sin propietario/ACL protegidos: $Path"
+    }
+    $allowed = @($administrators.Value, $system.Value)
+    $found = @()
+    foreach ($entry in $actualAcl.Access) {
+        $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+        if ($entry.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
+            $sid -notin $allowed) {
+            throw "Directorio contiene una ACE inesperada: $sid"
+        }
+        $found += $sid
+    }
+    if (@($found | Sort-Object -Unique).Count -ne 2) {
+        throw "Directorio no concede acceso a Administradores y SYSTEM: $Path"
+    }
+}
+
+function New-PrivateDirectory {
+    param([string]$Path)
+    if (Test-Path -LiteralPath $Path) { throw "Directorio ya existe: $Path" }
+
+    $administrators = [Security.Principal.SecurityIdentifier]::new("S-1-5-32-544")
+    $system = [Security.Principal.SecurityIdentifier]::new("S-1-5-18")
+    $acl = New-Object Security.AccessControl.DirectorySecurity
+    $acl.SetOwner($administrators)
+    $acl.SetAccessRuleProtection($true, $false)
+    $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor
+        [Security.AccessControl.InheritanceFlags]::ObjectInherit
+    foreach ($trustee in @($administrators, $system)) {
+        $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+            $trustee,
+            [Security.AccessControl.FileSystemRights]::FullControl,
+            $inheritance,
+            [Security.AccessControl.PropagationFlags]::None,
+            [Security.AccessControl.AccessControlType]::Allow
+        )
+        $acl.AddAccessRule($rule)
+    }
+
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        [IO.FileSystemAclExtensions]::CreateDirectory($acl, $Path) | Out-Null
+    } else {
+        [IO.Directory]::CreateDirectory($Path, $acl) | Out-Null
+    }
+    # CreateDirectory may return an existing directory if one appears in the race.
+    # Only the verified directory can be cleaned up after a failed installation.
+    Assert-PrivateDirectory -Path $Path
+}
+
+function Invoke-CheckedIcacls {
+    param([string]$Path, [string[]]$AclArguments)
+    & icacls.exe $Path @AclArguments | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "No pude aplicar ACL segura: $Path" }
 }
 
 function Resolve-InteractiveIdentity {
@@ -196,6 +264,15 @@ function Copy-SafeRegularFile {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function Assert-RegularDirectoryIfPresent {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    $item = Get-Item -LiteralPath $Path -Force
+    if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Instalación anterior contiene un directorio inesperado/reparse point: $Path"
+    }
+}
+
 function Stop-And-SnapshotOldAutomation {
     try {
         $task = Get-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -ErrorAction SilentlyContinue
@@ -241,27 +318,27 @@ function Install-Service {
 function Set-SecureAcls {
     param([string]$UserSid)
     $svc = "NT SERVICE\$ServiceName"
-    & icacls.exe $InstallDir /inheritance:r /grant:r `
-        "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${UserSid}:(OI)(CI)RX" "${svc}:(OI)(CI)RX" | Out-Null
+    Invoke-CheckedIcacls $InstallDir @('/inheritance:r', '/grant:r',
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(OI)(CI)RX", "${svc}:(OI)(CI)RX")
     foreach ($name in @("runtime", "mijialamp", "tools")) {
         $path = Join-Path $InstallDir $name
         if (Test-Path $path) {
-            & icacls.exe $path /inheritance:r /grant:r `
-                "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${UserSid}:(OI)(CI)RX" "${svc}:(OI)(CI)RX" /T /C | Out-Null
+            Invoke-CheckedIcacls $path @('/inheritance:r', '/grant:r',
+                '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(OI)(CI)RX", "${svc}:(OI)(CI)RX", '/T')
         }
     }
     $data = Join-Path $InstallDir "data"
-    & icacls.exe $data /inheritance:r /grant:r `
-        "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "${svc}:(OI)(CI)M" "*${UserSid}:(OI)(CI)R" /T /C | Out-Null
+    Invoke-CheckedIcacls $data @('/inheritance:r', '/grant:r',
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)R", '/T')
     $logs = Join-Path $InstallDir "logs"
-    & icacls.exe $logs /inheritance:r /grant:r `
-        "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "${svc}:(OI)(CI)M" "*${UserSid}:(OI)(CI)M" /T /C | Out-Null
+    Invoke-CheckedIcacls $logs @('/inheritance:r', '/grant:r',
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)M", '/T')
     $secrets = Join-Path $InstallDir "secrets"
-    & icacls.exe $secrets /inheritance:r /grant:r `
-        "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "${svc}:(OI)(CI)F" /T /C | Out-Null
+    Invoke-CheckedIcacls $secrets @('/inheritance:r', '/grant:r',
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)F", '/T')
     $cfg = Join-Path $InstallDir "config.json"
-    & icacls.exe $cfg /inheritance:r /grant:r `
-        "*S-1-5-18:F" "*S-1-5-32-544:F" "${svc}:R" "*${UserSid}:M" | Out-Null
+    Invoke-CheckedIcacls $cfg @('/inheritance:r', '/grant:r',
+        '*S-1-5-18:F', '*S-1-5-32-544:F', "${svc}:R", "*${UserSid}:M")
 }
 
 function Register-AgentTask {
@@ -320,7 +397,11 @@ Write-Host "Usuario interactivo: $UserName ($UserSid)"
 Write-Host "La fase elevada NO usa pip ni Internet." -ForegroundColor Green
 
 try {
-    if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging }
+    foreach ($path in @($InstallDir, (Join-Path $InstallDir "data"), (Join-Path $InstallDir "secrets"))) {
+        Assert-RegularDirectoryIfPresent -Path $path
+    }
+    New-PrivateDirectory -Path $Staging
+    $StagingCreated = $true
     Copy-ProjectFiles -Destination $Staging
     Copy-Item -Recurse -Force $PreparedPython (Join-Path $Staging "runtime")
     Verify-StagingAgainstPreparedManifest -StageRoot $Staging
@@ -368,13 +449,20 @@ try {
         Remove-Item -Force -ErrorAction SilentlyContinue
     Write-IntegrityManifest -RootPath $Staging
 
-    Stop-And-SnapshotOldAutomation
     if (Test-Path $InstallDir) {
         $backupRoot = Join-Path (Split-Path -Parent $InstallDir) "MijiaLamp-backups"
-        New-Item -ItemType Directory -Force -Path $backupRoot | Out-Null
-        $script:Backup = Join-Path $backupRoot (Get-Date -Format "yyyyMMdd-HHmmss")
-        Move-Item $InstallDir $script:Backup
-        & icacls.exe $backupRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" /T /C | Out-Null
+        if (Test-Path -LiteralPath $backupRoot) {
+            Assert-PrivateDirectory -Path $backupRoot
+        } else {
+            New-PrivateDirectory -Path $backupRoot
+        }
+    }
+    Stop-And-SnapshotOldAutomation
+    $OldAutomationStopped = $true
+    if (Test-Path $InstallDir) {
+        $backupPath = Join-Path $backupRoot (Get-Date -Format "yyyyMMdd-HHmmss-$([Guid]::NewGuid().ToString('N'))")
+        Move-Item $InstallDir $backupPath
+        $script:Backup = $backupPath
     }
     Move-Item $Staging $InstallDir
     $Swapped = $true
@@ -415,7 +503,22 @@ try {
     Write-Host "Instalación hardened v$ProjectVersion finalizada." -ForegroundColor Green
 } catch {
     Write-Host "Instalación falló: $($_.Exception.Message)" -ForegroundColor Red
-    if ($Swapped -or $Backup) { Restore-PreviousInstall }
-    if (Test-Path $Staging) { Remove-Item -Recurse -Force $Staging -ErrorAction SilentlyContinue }
+    if ($Swapped -or $Backup) {
+        Restore-PreviousInstall
+    } elseif ($OldAutomationStopped) {
+        # A failed move left the previous installation in place. Resume it.
+        try { Start-Service -Name $ServiceName -ErrorAction SilentlyContinue } catch {}
+        if ($OldTaskXml) {
+            try {
+                Register-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Xml $OldTaskXml -Force | Out-Null
+                if (-not $OldTaskEnabled) {
+                    Disable-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" | Out-Null
+                }
+            } catch {}
+        }
+    }
+    if ($StagingCreated -and (Test-Path -LiteralPath $Staging)) {
+        Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue
+    }
     throw
 }
