@@ -4,19 +4,37 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ## [3.1.3] - 2026-09-30
 
+### Changed
+
+- Ruff completo, formato y mypy pasan a ser controles obligatorios de CI y del workflow de release.
+- La documentación de verificación de artefactos identifica el repositorio público real.
+
 ### Fixed
 
+- La instalación Service en Windows PowerShell 5.1 configura LocalService sin argumentos vacíos, escribe JSON UTF-8 sin BOM y calcula el manifiesto de integridad después de que pywin32 prepare el ejecutable del servicio.
+- La verificación de seguridad distingue permisos de lectura y escritura al revisar el usuario interactivo.
 - Corregido el arranque del Agent/Tray en ambos modos.
 - Corregida la normalización de rutas del manifiesto durante la preparación e instalación Service.
 - El manifiesto de source ya no incluye caches Python que se excluyen del ZIP.
+- El build manual usa un nombre de SBOM seguro cuando la rama contiene `/`.
 
 ### Security
 
+- Las ACL de los archivos instalados heredan permisos restringidos de sus carpetas; la prueba de Windows comprueba que no queden concesiones amplias en archivos hijos.
+- Los locks fijan hashes SHA-256 de todos los wheels de runtime para Windows x64 y Python 3.10–3.12; Service y Portable usan `pip --require-hashes` al descargar/instalar dependencias.
+- CI valida los locks y reutiliza sus versiones sin hashes para la auditoría de vulnerabilidades y el SBOM.
+- El instalador exige que `install.ps1` figure en el manifiesto verificado y rechaza archivos extra en staging, incluidos scripts de raíz agregados después de preparar el runtime.
+- La preparación local Service y Portable acepta únicamente wheels binarios durante la instalación de dependencias.
+- La instalación y desinstalación Service rechazan rutas personalizadas fuera de `ProgramData\MijiaLamp` para impedir staging en ubicaciones modificables por el usuario y borrados administrativos accidentales.
+- El rollback y la desinstalación Service ya no ejecutan el Python ni `service.py` de una instalación anterior con privilegios de Administrador; ante un fallo se conservan los archivos, pero la automatización permanece detenida hasta una instalación verificada.
+- El instalador Service crea staging con ACL privadas desde el primer instante, valida propietario y permisos antes de ejecutar el runtime preparado y falla si `icacls` no puede proteger un archivo.
+- El directorio de backups se crea o valida antes de mover la instalación anterior; la prueba de Windows ejerce estas comprobaciones de ACL.
 - El workflow verifica hashes, contenido del runtime y código de los ZIPs antes de publicar la release.
 - Documentada la verificación de procedencia de una release oficial antes de elevar permisos.
 - La publicación audita todos los pins de runtime y genera el manifest de wheels a partir del wheelhouse realmente usado.
 - Las pruebas de Windows instalan `tzdata` antes de usar `ZoneInfo`; el tag de release debe coincidir con la versión del proyecto.
 - `python-miio` usa un único pin explícito compartido por preparación, instalación, auditoría y SBOM.
+- El runtime excluye los módulos opcionales `android_backup` y `micloud` de `python-miio`: no intervienen en el control local de la lámpara y no ofrecen wheels para Windows.
 
 ## [3.1.2] - 2026-09-30
 

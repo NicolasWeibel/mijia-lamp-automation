@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -16,10 +17,9 @@ if os.name == "nt":
     from mijialamp.ipc import PipeServer
     from mijialamp.logging_setup import configure_logging
     from mijialamp.paths import ensure_service_dirs
-    from mijialamp.service_meta import load_authorized_user_sid
-    from mijialamp.service_core import ServiceCore
     from mijialamp.secrets_store import SCOPE_LOCAL_MACHINE
-
+    from mijialamp.service_core import ServiceCore
+    from mijialamp.service_meta import load_authorized_user_sid
 
     class MijiaLampService(win32serviceutil.ServiceFramework):
         _svc_name_ = SERVICE_NAME
@@ -84,9 +84,7 @@ if os.name == "nt":
             try:
                 cfg = load_config()
                 self.log = configure_logging("service", cfg, event_log=True)
-                controller = LampController(
-                    cfg, self.log, token_scope=SCOPE_LOCAL_MACHINE
-                )
+                controller = LampController(cfg, self.log, token_scope=SCOPE_LOCAL_MACHINE)
                 self.core = ServiceCore(
                     controller,
                     cfg,
@@ -112,12 +110,8 @@ if os.name == "nt":
                 self.ReportServiceStatus(win32service.SERVICE_RUNNING)
                 self.pipe.serve_forever()
             except Exception as exc:
-                try:
-                    servicemanager.LogErrorMsg(
-                        f"MijiaLampService failed: {type(exc).__name__}: {exc}"
-                    )
-                except Exception:
-                    pass
+                with contextlib.suppress(Exception):
+                    servicemanager.LogErrorMsg(f"MijiaLampService failed: {type(exc).__name__}: {exc}")
                 if self.log:
                     self.log.error("Service fatal error: %s", exc, exc_info=True)
             finally:

@@ -11,7 +11,7 @@ EXAMPLE_CONFIG = ROOT / "config.example.json"
 
 
 def example_config() -> dict:
-    with open(EXAMPLE_CONFIG, "r", encoding="utf-8") as fh:
+    with open(EXAMPLE_CONFIG, encoding="utf-8") as fh:
         return validate_config(json.load(fh))
 
 
@@ -60,6 +60,7 @@ class ConfigTests(unittest.TestCase):
     def test_corrupt_device_cache_is_quarantined(self):
         import tempfile
         from unittest.mock import patch
+
         import mijialamp.config as config_mod
 
         with tempfile.TemporaryDirectory() as td:
@@ -67,13 +68,13 @@ class ConfigTests(unittest.TestCase):
             cache = root / "device_cache.json"
             lock = root / "device_cache.lock"
             cache.write_text("{not-json", encoding="utf-8")
-            with patch.object(config_mod, "DEVICE_CACHE_PATH", cache), patch.object(
-                config_mod, "DEVICE_CACHE_LOCK_PATH", lock
+            with (
+                patch.object(config_mod, "DEVICE_CACHE_PATH", cache),
+                patch.object(config_mod, "DEVICE_CACHE_LOCK_PATH", lock),
             ):
                 self.assertEqual(config_mod.read_device_cache(), {})
             self.assertFalse(cache.exists())
             self.assertEqual(len(list(root.glob("device_cache.corrupt-*.json"))), 1)
-
 
 
 if __name__ == "__main__":

@@ -20,6 +20,10 @@ Portable no pretende sobrevivir al cierre de sesión ni ofrecer Preshutdown SCM.
 
 El servicio **no usa** un Python instalado en `%LOCALAPPDATA%` u otra ubicación modificable por el usuario. `prepare-service-runtime.ps1` copia la instalación base, descarta `Lib/site-packages` y `Scripts`, instala exclusivamente el conjunto fijado y prueba la reubicación.
 
+La preparación local de dependencias acepta sólo wheels binarios, para evitar ejecutar builds de paquetes fuente. Los 30 paquetes están fijados por versión y los locks incluyen hashes SHA-256 de los wheels para Windows x64 y Python 3.10–3.12. `pip --require-hashes` comprueba esos hashes tanto al descargarlos como al instalarlos sin conexión. Un wheel con bytes distintos se rechaza; al actualizar una dependencia hay que revisar el nuevo wheel y actualizar su hash de forma explícita.
+
+Este control verifica que se instalen los bytes aprobados en el repositorio; no demuestra que esos bytes estén libres de malware ni protege frente a cambios maliciosos en el propio repositorio, Python base o el equipo de build. Otras arquitecturas no están cubiertas por estos hashes en la preparación local.
+
 El runtime resultante se hash-ea archivo por archivo. El instalador Admin verifica que:
 
 - no falten archivos;
@@ -29,6 +33,14 @@ El runtime resultante se hash-ea archivo por archivo. El instalador Admin verifi
 - los mismos hashes vuelvan a coincidir **después de copiarlos al staging**, cerrando la ventana TOCTOU entre verificación y copia.
 
 Tras instalar, `integrity-manifest.json` registra los archivos inmutables y `security-check.ps1` vuelve a verificar sus hashes.
+
+El directorio de staging nace con una ACL protegida que permite acceso sólo a Administradores y SYSTEM. El instalador verifica propietario y ACE antes de ejecutar el Python preparado, rechaza directorios anteriores con reparse points y detiene la instalación si `icacls` falla. El destino de backups se valida antes de detener el servicio anterior.
+
+El instalador exige que `install.ps1` esté incluido en el manifiesto de source y, después de copiar, rechaza cualquier archivo de código o script en staging que no figure en ese manifiesto. La prueba de CI incluye un script de raíz agregado a último momento para comprobar el rechazo.
+
+El modo Service sólo acepta la carpeta oficial `ProgramData\MijiaLamp`. Instalar bajo una carpeta cuyo padre pueda modificar el usuario rompería el aislamiento del staging; la desinstalación limita la ruta por el mismo motivo y para evitar borrados accidentales al usar `-DeleteFiles`.
+
+Si la instalación falla después de detener la versión anterior, el rollback conserva sus archivos sin ejecutar su Python ni `service.py` como Administrador. No reinicia el Service ni el Agent: hay que comprobar su estado, revisar los archivos y repetir la instalación desde una release verificada. `uninstall.ps1` elimina el servicio mediante el administrador de servicios de Windows y tampoco ejecuta el runtime instalado con privilegios elevados.
 
 Luego se copia a `C:\ProgramData\MijiaLamp\runtime`, donde el usuario sólo recibe `Read & Execute`.
 
@@ -84,7 +96,7 @@ El hash manifest protege integridad entre preparación e instalación, pero no s
 Procedimiento para una release oficial ya publicada:
 
 1. Descargá el ZIP Service desde la página Releases del repositorio que elegiste confiar. Conservá el ZIP sin modificar.
-2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R OWNER/REPO`, reemplazando `VERSION` y usando la identidad real del repositorio. La verificación debe terminar correctamente antes de extraer o elevar permisos.
+2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation`, reemplazando `VERSION` por la versión descargada. La verificación debe terminar correctamente antes de extraer o elevar permisos.
 3. Extraé el ZIP y ejecutá `install.ps1` desde una PowerShell elevada. El instalador comprueba hashes del runtime y código fuente antes y después de copiar; no usa Internet ni `pip`.
 4. Tras la instalación, ejecutá `security-check.ps1` y `lampctl.py doctor` antes de habilitar la automatización.
 

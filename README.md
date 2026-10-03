@@ -109,10 +109,10 @@ Este modo prioriza fiabilidad en shutdown/suspend y separación de privilegios.
 
 ### Verificar una release antes de elevar permisos
 
-Si descargaste un ZIP oficial con runtime incluido, verificá **el ZIP original antes de extraerlo** y reemplazá `OWNER/REPO` por el repositorio del publicador que decidiste confiar:
+Si descargaste un ZIP oficial con runtime incluido, verificá **el ZIP original antes de extraerlo** contra este repositorio:
 
 ```powershell
-gh attestation verify .\MijiaLamp-Service-VERSION.zip -R OWNER/REPO
+gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation
 ```
 
 Si esa verificación falla o no existe una attestation para el ZIP, no ejecutes el instalador elevado. El archivo `.zip.sha256` detecta cambios accidentales, pero por sí solo no demuestra quién publicó el ZIP. La attestation acredita procedencia del build; tampoco garantiza que el código o sus dependencias estén libres de malware. Consultá [`docs/security.md`](docs/security.md) para el procedimiento y los límites.
@@ -252,7 +252,7 @@ El modo Service aplica, entre otras medidas:
 - sin listener TCP;
 - runtime preparado/hash-eado antes de elevar;
 - instalador elevado offline y sin `pip`;
-- staging + segunda verificación de hashes para cerrar TOCTOU + rollback best-effort ante fallos;
+- staging + segunda verificación de hashes para cerrar TOCTOU + recuperación de archivos sin ejecutar el runtime anterior como Administrador; ante fallos, la automatización queda detenida hasta reinstalar desde una release verificada;
 - `integrity-manifest.json` permite revalidar código/runtime instalados;
 - `security-check.ps1` comprueba invariantes después de instalar.
 
@@ -306,7 +306,7 @@ Para preparar el repositorio público y publicar versiones mediante tags anotado
 
 Diseñado y probado principalmente alrededor de `yeelink.light.lamp22`. Otros modelos miIO pueden exponer propiedades/rangos diferentes.
 
-Python soportado para preparación/Portable: **3.10–3.12**.
+Python soportado para preparación/Portable: **3.10–3.12 en Windows x64**. Las dependencias se verifican con hashes SHA-256 de wheels antes de instalarse.
 
 ## Licencia
 

@@ -3,13 +3,12 @@ from __future__ import annotations
 import copy
 import json
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from .locking import FileLock
 from .paths import STATE_LOCK_PATH, STATE_PATH
 from .util import atomic_write_json, epoch_now, redact_secrets, utc_now_iso
-
 
 DEFAULT_STATE = {
     "version": 3,
@@ -58,7 +57,7 @@ class StateStore:
     def _read_unlocked(self) -> dict:
         state = copy.deepcopy(DEFAULT_STATE)
         try:
-            with open(self.path, "r", encoding="utf-8") as fh:
+            with open(self.path, encoding="utf-8") as fh:
                 loaded = json.load(fh)
             if not isinstance(loaded, dict):
                 raise json.JSONDecodeError("runtime root is not an object", "", 0)
@@ -68,11 +67,13 @@ class StateStore:
             return state
         except json.JSONDecodeError as exc:
             stamp = int(epoch_now())
-            corrupt = self.path.with_name(f"{self.path.stem}.corrupt-{stamp}{self.path.suffix}")
+            candidate = self.path.with_name(f"{self.path.stem}.corrupt-{stamp}{self.path.suffix}")
             try:
-                os.replace(self.path, corrupt)
+                os.replace(self.path, candidate)
             except OSError:
                 corrupt = None
+            else:
+                corrupt = candidate
             if self.log:
                 self.log.error(
                     "runtime_state corrupto: %s; backup=%s; se reinicia estado lógico",
@@ -106,6 +107,7 @@ class StateStore:
 
     def bump_intent(self, reason: str, *, critical_off: bool = False, **fields) -> dict:
         """Atomically mutate intent and increment revision used to cancel stale work."""
+
         def mutate(state: dict) -> None:
             state["intent_revision"] = int(state.get("intent_revision", 0)) + 1
             if critical_off:
@@ -122,6 +124,7 @@ class StateStore:
 
     def record_error(self, action: str, exc: Exception) -> None:
         now = epoch_now()
+
         def mutate(state: dict) -> None:
             if int(state.get("consecutive_failures", 0)) <= 0:
                 state["first_failure_at"] = now
@@ -133,6 +136,7 @@ class StateStore:
                 "type": type(exc).__name__,
                 "message": redact_secrets(exc)[:500],
             }
+
         self.mutate(mutate)
 
     def record_success(self) -> None:

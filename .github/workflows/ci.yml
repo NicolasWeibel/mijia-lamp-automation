@@ -61,26 +61,18 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install quality tools
-        run: python -m pip install "coverage[toml]>=7.10,<8" "mypy>=1.17,<2" "ruff==0.16.9" "tzdata==2026.4"
+        run: python -m pip install "coverage[toml]>=7.10,<8" "mypy==1.20.2" "ruff==0.16.9" "tzdata==2026.4"
 
       - name: Ruff correctness gate
         run: ruff check --select E9,F63,F7,F82 .
 
-      - name: Ruff full lint (advisory baseline)
-        continue-on-error: true
+      - name: Ruff full lint
         run: ruff check .
 
       - name: Ruff format check
-        # Formatting is enforced by pre-commit for contributors. Keep it advisory in CI
-        # until the first public baseline is normalized with the pinned Ruff version.
-        continue-on-error: true
         run: ruff format --check .
 
-      - name: Mypy (gradual typing advisory)
-        # Win32/third-party dynamic APIs make the initial typing baseline intentionally
-        # gradual. New code should reduce this debt without making an otherwise safe
-        # release impossible.
-        continue-on-error: true
+      - name: Mypy
         run: mypy mijialamp
 
       - name: Core coverage gate
@@ -100,6 +92,18 @@ jobs:
       - name: Parse PowerShell scripts
         shell: pwsh
         run: ./scripts/check-powershell.ps1
+
+      - name: Exercise installer ACL protection
+        shell: pwsh
+        run: ./scripts/test-install-acl.ps1
+
+      - name: Exercise safe installer recovery
+        shell: pwsh
+        run: ./scripts/test-install-recovery.ps1
+
+      - name: Reject unmanifested installer files
+        shell: pwsh
+        run: ./scripts/test-install-stage.ps1
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
@@ -137,10 +141,12 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -r requirements.lock.txt
-          python -m pip install -r requirements.windows.lock.txt
-          python -m pip install --no-deps -r requirements.miio.lock.txt
+          python -m pip install --require-hashes --only-binary=:all: -r requirements.lock.txt -r requirements.windows.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw "No se pudieron instalar las dependencias verificadas" }
+          python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements.miio.lock.txt
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar python-miio verificado" }
           python -m pip install --no-deps -e .
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar el proyecto" }
 
       - name: Import smoke test
         run: |
@@ -163,7 +169,11 @@ jobs:
         run: python -m pip install "pip-audit==2.10.1"
 
       - name: Audit pinned dependency set
+        shell: pwsh
         run: |
-          python -m pip_audit -r requirements.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.windows.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.miio.lock.txt --no-deps --disable-pip --progress-spinner=off
+          $plain = Join-Path $env:RUNNER_TEMP "mijialamp-audit-requirements.txt"
+          python scripts/verify_dependency_pins.py --plain-output $plain
+          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          python -m pip_audit -r $plain --no-deps --disable-pip --progress-spinner=off
+          if ($LASTEXITCODE -ne 0) { throw "La auditoría encontró dependencias vulnerables" }
+          Remove-Item -LiteralPath $plain

@@ -26,12 +26,16 @@ def candidate_files() -> list[Path]:
     env_home = os.environ.get("MIHOME_CTL_HOME")
     if env_home:
         values.append(Path(env_home) / "mi-tokens.json")
-    values.extend([
-        Path.cwd() / ".secrets" / "mi-tokens.json",
-        Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        / "mihome-ctl" / "mihome-ctl" / "mi-tokens.json",
-        Path.home() / ".local" / "state" / "mihome-ctl" / "mi-tokens.json",
-    ])
+    values.extend(
+        [
+            Path.cwd() / ".secrets" / "mi-tokens.json",
+            Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+            / "mihome-ctl"
+            / "mihome-ctl"
+            / "mi-tokens.json",
+            Path.home() / ".local" / "state" / "mihome-ctl" / "mi-tokens.json",
+        ]
+    )
     local = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local")) / "mihome-ctl"
     if local.exists():
         values.extend(local.glob("**/mi-tokens.json"))
@@ -77,7 +81,7 @@ def find_device(data, expected_did: str):
     if not matches:
         # Some formats place did and token in sibling/nested objects. Search any
         # dict with the expected DID, then recursively inspect only that subtree.
-        for obj, path, parent_key in walk(data):
+        for obj, path, _ in walk(data):
             did = get_first(obj, DID_KEYS)
             if did is not None and str(did) == expected_did:
                 for sub, subpath, _ in walk(obj, path):
@@ -94,7 +98,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Importa un token de mihome-ctl sin mostrarlo")
     parser.add_argument("--source", type=Path)
     parser.add_argument("--did")
-    parser.add_argument("--scope", choices=(SCOPE_LOCAL_MACHINE, SCOPE_CURRENT_USER), default=SCOPE_LOCAL_MACHINE)
+    parser.add_argument(
+        "--scope", choices=(SCOPE_LOCAL_MACHINE, SCOPE_CURRENT_USER), default=SCOPE_LOCAL_MACHINE
+    )
     args = parser.parse_args()
 
     ensure_service_dirs()
@@ -108,7 +114,7 @@ def main() -> int:
         print("ERROR: no encontré mi-tokens.json. Pasá -Source a import-token.ps1.")
         return 2
 
-    with open(source, "r", encoding="utf-8-sig") as fh:
+    with open(source, encoding="utf-8-sig") as fh:
         data = json.load(fh)
     obj, path = find_device(data, expected_did)
     token = str(get_first(obj, TOKEN_KEYS)).strip()

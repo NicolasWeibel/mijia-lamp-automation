@@ -19,9 +19,7 @@ def _import_device():
     try:
         from miio import Device
     except Exception as exc:
-        raise CommunicationError(
-            "No se pudo importar python-miio. Ejecutá install.ps1 nuevamente."
-        ) from exc
+        raise CommunicationError("No se pudo importar python-miio. Ejecutá install.ps1 nuevamente.") from exc
     return Device
 
 
@@ -100,9 +98,7 @@ class MiioLampClient:
         try:
             values = dev.send("get_prop", ["power", "bright", "ct"], retry_count=1)
         except Exception as exc:
-            raise CommunicationError(
-                f"No pude leer el estado físico en {ip}: {redact_secrets(exc)}"
-            ) from exc
+            raise CommunicationError(f"No pude leer el estado físico en {ip}: {redact_secrets(exc)}") from exc
         if not isinstance(values, (list, tuple)) or not values:
             raise CommunicationError(f"Respuesta get_prop inesperada desde {ip}: {values!r}")
         power = str(values[0]).lower() if values[0] is not None else None
@@ -125,9 +121,7 @@ class MiioLampClient:
         try:
             dev.send("set_power", params, retry_count=1 if fast else int(self.cfg.get("retries", 2)))
         except Exception as exc:
-            raise CommunicationError(
-                f"Falló set_power({power}) en {ip}: {redact_secrets(exc)}"
-            ) from exc
+            raise CommunicationError(f"Falló set_power({power}) en {ip}: {redact_secrets(exc)}") from exc
 
     def set_power_critical_off(self, *, ip: str | None = None, timeout: float = 0.25) -> None:
         """Best-effort OFF for Suspend: fixed IP, no discovery, no retries, hard timeout."""
@@ -136,13 +130,9 @@ class MiioLampClient:
         try:
             dev.send("set_power", ["off"], retry_count=0)
         except Exception as exc:
-            raise CommunicationError(
-                f"Falló OFF crítico en {ip}: {redact_secrets(exc)}"
-            ) from exc
+            raise CommunicationError(f"Falló OFF crítico en {ip}: {redact_secrets(exc)}") from exc
 
-    def apply_profile(
-        self, profile: ProfileValues, *, ip: str | None = None, fast: bool = False
-    ) -> None:
+    def apply_profile(self, profile: ProfileValues, *, ip: str | None = None, fast: bool = False) -> None:
         ip = str(ip or self.cfg["lamp_ip"])
         timeout = float(self.cfg["miio_fast_timeout_seconds"] if fast else self.cfg["miio_timeout_seconds"])
         dev = self._device(ip, timeout)
@@ -180,15 +170,13 @@ class MiioLampClient:
         if os.name != "nt" or not bool(self.cfg.get("discovery_neighbor_enabled", True)):
             return []
         cache = read_device_cache()
-        expected = _normalize_mac(
-            str(self.cfg.get("expected_mac", "") or cache.get("observed_mac", ""))
-        )
+        expected = _normalize_mac(str(self.cfg.get("expected_mac", "") or cache.get("observed_mac", "")))
         if not expected:
             return []
         script = (
             "Get-NetNeighbor -AddressFamily IPv4 -ErrorAction SilentlyContinue | "
             "Where-Object { $_.State -ne 'Unreachable' } | "
-            "ForEach-Object { \"$($_.IPAddress)|$($_.LinkLayerAddress)\" }"
+            'ForEach-Object { "$($_.IPAddress)|$($_.LinkLayerAddress)" }'
         )
         try:
             cp = subprocess.run(
@@ -230,12 +218,12 @@ class MiioLampClient:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.connect((target, 54321))
-            return ipaddress.ip_network(f"{sock.getsockname()[0]}/24", strict=False)
+            return ipaddress.IPv4Network(f"{sock.getsockname()[0]}/24", strict=False)
         except OSError:
             try:
                 ips = socket.gethostbyname_ex(socket.gethostname())[2]
                 ip = next(x for x in ips if not x.startswith(("127.", "169.254.")))
-                return ipaddress.ip_network(f"{ip}/24", strict=False)
+                return ipaddress.IPv4Network(f"{ip}/24", strict=False)
             except Exception:
                 return None
         finally:
@@ -301,7 +289,9 @@ class MiioLampClient:
                     self.log.info("Discovery /24 %s: %d hosts, %d workers", network, len(candidates), workers)
                     expected_did = str(self.cfg["device_id"])
                     with ThreadPoolExecutor(max_workers=workers) as pool:
-                        futures = {pool.submit(self._probe_handshake_did, ip, timeout): ip for ip in candidates}
+                        futures = {
+                            pool.submit(self._probe_handshake_did, ip, timeout): ip for ip in candidates
+                        }
                         for future in as_completed(futures):
                             ip = futures[future]
                             try:

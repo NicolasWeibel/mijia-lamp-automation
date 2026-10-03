@@ -16,12 +16,10 @@ def load_authorized_user_sid() -> str:
     built separately for SYSTEM, Administrators, the exact Service SID and this user.
     """
     try:
-        with open(SERVICE_META_PATH, "r", encoding="utf-8") as fh:
+        with open(SERVICE_META_PATH, encoding="utf-8") as fh:
             payload = json.load(fh)
     except FileNotFoundError as exc:
-        raise ConfigError(
-            "Falta data/service_meta.json. Reinstalá MijiaLamp v3 como Administrador."
-        ) from exc
+        raise ConfigError("Falta data/service_meta.json. Reinstalá MijiaLamp v3 como Administrador.") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise ConfigError("data/service_meta.json no es válido") from exc
     sid = str(payload.get("authorized_user_sid", "")).strip()

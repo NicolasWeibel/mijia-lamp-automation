@@ -20,7 +20,7 @@ class NullLogger:
 
 
 def config():
-    with open(ROOT / "config.example.json", "r", encoding="utf-8") as fh:
+    with open(ROOT / "config.example.json", encoding="utf-8") as fh:
         cfg = validate_config(json.load(fh))
     cfg["night_mode"] = False
     cfg["profile_transition_mode"] = "stepped"
@@ -47,11 +47,15 @@ class FakeTransport:
 
     def set_power(self, power, *, ip=None, fast=False):
         self.commands.append(("power", power, fast))
-        self.physical = LampPhysicalState(power, self.physical.brightness, self.physical.kelvin, ip or self.physical.ip)
+        self.physical = LampPhysicalState(
+            power, self.physical.brightness, self.physical.kelvin, ip or self.physical.ip
+        )
 
     def set_power_critical_off(self, *, ip=None, timeout=0.25):
         self.commands.append(("critical-off", timeout, ip))
-        self.physical = LampPhysicalState("off", self.physical.brightness, self.physical.kelvin, ip or self.physical.ip)
+        self.physical = LampPhysicalState(
+            "off", self.physical.brightness, self.physical.kelvin, ip or self.physical.ip
+        )
 
     def apply_profile(self, profile, *, ip=None, fast=False):
         self.commands.append(("profile", profile.name, fast))
@@ -89,7 +93,9 @@ class ControllerRaceTests(unittest.TestCase):
             lock = Path(td) / "control.lock"
             result = {}
             with patch("mijialamp.controller.CONTROL_LOCK_PATH", lock):
-                thread = threading.Thread(target=lambda: result.setdefault("sync", controller.sync("periodic-sync")))
+                thread = threading.Thread(
+                    target=lambda: result.setdefault("sync", controller.sync("periodic-sync"))
+                )
                 thread.start()
                 self.assertTrue(transport.read_started.wait(1))
                 controller.system_off("suspend", fast=True, clear_overrides=False, critical_timeout=0.25)
@@ -99,7 +105,6 @@ class ControllerRaceTests(unittest.TestCase):
             self.assertNotIn(("power", "on", False), transport.commands)
             self.assertTrue(any(cmd[0] in {"power", "critical-off"} for cmd in transport.commands))
             self.assertTrue(result["sync"].get("stale"))
-
 
     def test_suspend_preserves_manual_day_and_resume_only_invalidates_old_work(self):
         with tempfile.TemporaryDirectory() as td:
@@ -143,7 +148,10 @@ class ControllerRaceTests(unittest.TestCase):
                 last_desired_brightness=35,
                 last_desired_kelvin=3000,
             )
-            with self.evening_profile(), patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"):
+            with (
+                self.evening_profile(),
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+            ):
                 result = controller.sync("periodic-sync")
             self.assertTrue(result.get("external_override"))
             self.assertTrue(controller.state.read()["external_override_active"])
@@ -154,8 +162,10 @@ class ControllerRaceTests(unittest.TestCase):
             transport = FakeTransport(LampPhysicalState("off", 10, 2700, "192.168.1.100"))
             controller = self.make_controller(td, transport)
             controller.cfg["external_change_policy"] = "enforce"
-            with self.evening_profile(), patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.time.sleep", return_value=None
+            with (
+                self.evening_profile(),
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.time.sleep", return_value=None),
             ):
                 result = controller.sync("test-on")
             self.assertTrue(result["changed"])
@@ -178,8 +188,10 @@ class ControllerRaceTests(unittest.TestCase):
                 last_desired_brightness=25,
                 last_desired_kelvin=2700,
             )
-            with self.evening_profile(), patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.time.sleep", return_value=None
+            with (
+                self.evening_profile(),
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.time.sleep", return_value=None),
             ):
                 result = controller.sync("profile-boundary")
             self.assertFalse(result.get("external_override", False))
@@ -189,9 +201,11 @@ class ControllerRaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             transport = FakeTransport(LampPhysicalState("off", 10, 2700, "192.168.1.100"))
             controller = self.make_controller(td, transport)
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.is_night_now", return_value=False
-            ), patch("mijialamp.controller.time.sleep", return_value=None):
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.is_night_now", return_value=False),
+                patch("mijialamp.controller.time.sleep", return_value=None),
+            ):
                 profile = controller.manual_on()
             self.assertEqual(profile.name, "manual_day")
             self.assertTrue(controller.state.read()["manual_day_active"])
@@ -201,8 +215,9 @@ class ControllerRaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             transport = FakeTransport(LampPhysicalState("on", 35, 3000, "192.168.1.100"))
             controller = self.make_controller(td, transport)
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.threading.Thread.start", return_value=None
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.threading.Thread.start", return_value=None),
             ):
                 controller.manual_off()
             state = controller.state.read()

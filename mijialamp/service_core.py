@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import socket
 import threading
 import time
@@ -59,11 +60,11 @@ class ServiceCore:
     @staticmethod
     def _network_signature() -> tuple[str, ...]:
         try:
-            values = {
-                item[4][0]
-                for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
-                if item[4] and not item[4][0].startswith(("127.", "169.254."))
-            }
+            values: set[str] = set()
+            for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                address = item[4][0] if item[4] else None
+                if isinstance(address, str) and not address.startswith(("127.", "169.254.")):
+                    values.add(address)
             return tuple(sorted(values))
         except OSError:
             return ()
@@ -115,13 +116,12 @@ class ServiceCore:
         critical_revision = int(self.controller.state.read().get("critical_off_revision", 0))
 
         if reassert:
+
             def reassert_off() -> None:
                 time.sleep(0.25)
                 self.controller.reassert_critical_off(reason, critical_revision)
 
-            threading.Thread(
-                target=reassert_off, name="MijiaLampOffReassert", daemon=True
-            ).start()
+            threading.Thread(target=reassert_off, name="MijiaLampOffReassert", daemon=True).start()
         return {"off": True, "reason": reason}
 
     @staticmethod
@@ -136,15 +136,19 @@ class ServiceCore:
         if command == "_wake":
             return None
         if command == "ping":
-            return {"service": self.runtime_name, "runtime": self.runtime_name, "version": 3, "app_version": __version__, "at": utc_now_iso()}
+            return {
+                "service": self.runtime_name,
+                "runtime": self.runtime_name,
+                "version": 3,
+                "app_version": __version__,
+                "at": utc_now_iso(),
+            }
         if command == "token-status":
             configured = token_exists(expected_scope=self.token_scope) if self.token_scope else token_exists()
-            result = {"configured": configured}
+            result: dict[str, object] = {"configured": configured}
             if configured:
-                try:
+                with contextlib.suppress(Exception):
                     result["scope"] = token_metadata().get("scope")
-                except Exception:
-                    pass
             return result
         if command == "status":
             return self.controller.status(query_physical=bool(request.get("physical", True)))
@@ -153,7 +157,9 @@ class ServiceCore:
         if command == "night-status":
             return self.controller.solar_status()
         if command == "sync":
-            result = self.controller.sync(str(request.get("reason", "ipc-sync")), force=bool(request.get("force", False)))
+            result = self.controller.sync(
+                str(request.get("reason", "ipc-sync")), force=bool(request.get("force", False))
+            )
             return self._sync_payload(result)
         if command == "manual-on":
             return asdict(self.controller.manual_on())
@@ -195,13 +201,15 @@ class ServiceCore:
             self.controller.set_user_presence(presence, event=event)
             return self._sync_payload(self.controller.sync(event))
         if command in {"agent-start", "agent-heartbeat"}:
-            locked = request.get("session_locked")
-            display = request.get("display_on")
-            presence = request.get("user_presence")
+            heartbeat_locked = request.get("session_locked")
+            heartbeat_display = request.get("display_on")
+            heartbeat_presence = request.get("user_presence")
             _state, changed = self.controller.update_interactive_snapshot(
-                session_locked=bool(locked) if locked is not None else None,
-                display_on=bool(display) if display is not None else None,
-                user_presence=str(presence) if presence in {"present", "not_present", "inactive"} else None,
+                session_locked=bool(heartbeat_locked) if heartbeat_locked is not None else None,
+                display_on=bool(heartbeat_display) if heartbeat_display is not None else None,
+                user_presence=str(heartbeat_presence)
+                if heartbeat_presence in {"present", "not_present", "inactive"}
+                else None,
                 event=command,
             )
             if changed:

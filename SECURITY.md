@@ -46,7 +46,7 @@ Nunca publicar:
 4. elimina herramientas de instalación del runtime final;
 5. genera SHA-256 de cada archivo.
 
-`install.ps1` no descarga ni instala paquetes: verifica el manifest, rechaza reparse points, vuelve a verificar hashes en staging y copia el runtime bajo ACL protegida. Después genera `integrity-manifest.json`, que `security-check.ps1` puede revalidar.
+`install.ps1` no descarga ni instala paquetes: verifica el manifest, rechaza reparse points, crea staging con ACL exclusiva de Administradores/SYSTEM antes de copiar o ejecutar archivos y vuelve a verificar hashes tras la copia. Los fallos al aplicar ACL detienen la instalación. Después genera `integrity-manifest.json`, que `security-check.ps1` puede revalidar.
 
 Para máxima seguridad, usá la release Service oficial generada por GitHub Actions: incluye el runtime ya preparado, SHA-256, SBOM y Artifact Attestations. Un runtime preparado localmente conserva la separación de privilegios, pero no aporta por sí solo una identidad criptográfica del publicador.
 

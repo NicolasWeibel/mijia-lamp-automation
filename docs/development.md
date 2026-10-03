@@ -4,6 +4,23 @@
 
 Python soportado: 3.10–3.12.
 
+La preparación de runtime con locks verificados requiere Windows x64. Para renovar los hashes después de revisar y cambiar las versiones de los locks, descargá los wheels para las tres versiones compatibles:
+
+```powershell
+$wheelDir = Join-Path $env:TEMP "mijialamp-reviewed-wheels"
+New-Item -ItemType Directory -Force $wheelDir | Out-Null
+python scripts/verify_dependency_pins.py --plain-output (Join-Path $env:TEMP "mijialamp-pins.txt")
+foreach ($version in @("3.10", "3.11", "3.12")) {
+    $abi = "cp" + $version.Replace(".", "")
+    python -m pip download --only-binary=:all: --no-deps --platform win_amd64 --python-version $version --implementation cp --abi $abi --dest $wheelDir -r (Join-Path $env:TEMP "mijialamp-pins.txt")
+    if ($LASTEXITCODE -ne 0) { throw "Falló la descarga para Python $version" }
+}
+python scripts/update_dependency_hashes.py $wheelDir
+python scripts/verify_dependency_pins.py
+```
+
+Usá un directorio de wheels vacío, verificá la procedencia de los paquetes antes de aceptar sus nuevos hashes y probá `pip --require-hashes` en las tres versiones. `update_dependency_hashes.py` exige un wheel para cada paquete fijado y rechaza paquetes adicionales.
+
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1

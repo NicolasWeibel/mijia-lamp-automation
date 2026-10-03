@@ -16,7 +16,7 @@ jobs:
   build:
     runs-on: windows-latest
     env:
-      RELEASE_TAG: ${{ github.ref_name }}
+      RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('ci-{0}', github.sha) }}
 
     steps:
       - name: Checkout
@@ -40,19 +40,32 @@ jobs:
           python-version: '3.12'
 
       - name: Install release checks and timezone data
-        run: python -m pip install "tzdata==2026.4" "ruff==0.16.9" "pip-audit==2.10.1"
+        run: python -m pip install "tzdata==2026.4" "ruff==0.16.9" "mypy==1.20.2" "pip-audit==2.10.1"
 
       - name: Verify repository
         run: python scripts/check_repository.py
 
-      - name: Python correctness gate
-        run: ruff check --select E9,F63,F7,F82 .
+      - name: Verify hashed runtime dependencies
+        run: python scripts/verify_dependency_pins.py
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: Mypy
+        run: mypy mijialamp
 
       - name: Audit pinned runtime dependencies
+        shell: pwsh
         run: |
-          python -m pip_audit -r requirements.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.windows.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.miio.lock.txt --no-deps --disable-pip --progress-spinner=off
+          $plain = Join-Path $env:RUNNER_TEMP "mijialamp-audit-requirements.txt"
+          python scripts/verify_dependency_pins.py --plain-output $plain
+          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          python -m pip_audit -r $plain --no-deps --disable-pip --progress-spinner=off
+          if ($LASTEXITCODE -ne 0) { throw "La auditoría encontró dependencias vulnerables" }
+          Remove-Item -LiteralPath $plain
 
       - name: Check PowerShell syntax
         shell: pwsh
@@ -73,13 +86,14 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install "cyclonedx-bom==7.3.1"
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar CycloneDX" }
           New-Item -ItemType Directory -Force release | Out-Null
           $combined = "release/requirements-sbom.txt"
-          Get-Content requirements.lock.txt, requirements.windows.lock.txt, requirements.miio.lock.txt |
-            Where-Object { $_ -and -not $_.Trim().StartsWith('#') } |
-            Set-Content -Encoding ascii $combined
+          python scripts/verify_dependency_pins.py --plain-output $combined
+          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
           cyclonedx-py requirements $combined --output-format JSON --output-file "release/MijiaLamp-${env:RELEASE_TAG}.sbom.cdx.json"
-          Remove-Item $combined
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo generar el SBOM" }
+          Remove-Item -LiteralPath $combined
 
       - name: Build dependency wheel manifest
         shell: pwsh
@@ -87,13 +101,13 @@ jobs:
 
       - name: Attest release provenance
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'release/*.zip'
 
       - name: Attest SBOM
         if: startsWith(github.ref, 'refs/tags/')
-        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'release/*.zip'
           sbom-path: 'release/MijiaLamp-${{ github.ref_name }}.sbom.cdx.json'

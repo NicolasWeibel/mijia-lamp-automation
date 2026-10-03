@@ -86,7 +86,12 @@ def _check_manifest_entries(
             continue
         size = entry.get("size")
         digest = entry.get("sha256")
-        if type(size) is not int or size < 0 or not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+        if (
+            type(size) is not int
+            or size < 0
+            or not isinstance(digest, str)
+            or not SHA256_RE.fullmatch(digest)
+        ):
             raise VerificationError(f"Metadatos inválidos en manifiesto: {relative}")
         if archive.getinfo(name).file_size != size or _zip_hash(archive, name) != digest:
             raise VerificationError(f"Hash o tamaño incorrecto: {name}")
@@ -111,9 +116,7 @@ def verify_archive(path: Path, *, require_runtime: bool = False) -> str:
         raise VerificationError(f"SHA-256 del ZIP no coincide con {sidecar.name}")
 
     manifest_name = (
-        f"{root}/runtime-manifest.json"
-        if flavor == "Portable"
-        else f"{root}/prepared-runtime/manifest.json"
+        f"{root}/runtime-manifest.json" if flavor == "Portable" else f"{root}/prepared-runtime/manifest.json"
     )
     runtime_prefix = f"{root}/runtime/" if flavor == "Portable" else f"{root}/prepared-runtime/python/"
     with zipfile.ZipFile(path) as archive:
@@ -128,7 +131,11 @@ def verify_archive(path: Path, *, require_runtime: bool = False) -> str:
             manifest = json.loads(archive.read(manifest_name))
         except (ValueError, UnicodeError) as exc:
             raise VerificationError("Manifiesto de runtime inválido") from exc
-        if not isinstance(manifest, dict) or manifest.get("schema") != 1 or manifest.get("project_version") != version:
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("schema") != 1
+            or manifest.get("project_version") != version
+        ):
             raise VerificationError("Versión o esquema del manifiesto incorrecto")
 
         expected_runtime = _check_manifest_entries(
@@ -144,9 +151,7 @@ def verify_archive(path: Path, *, require_runtime: bool = False) -> str:
             prefix=f"{root}/",
             require_all=flavor == "Service",
         )
-        code_names = {
-            name for name in names if name.startswith((f"{root}/mijialamp/", f"{root}/tools/"))
-        }
+        code_names = {name for name in names if name.startswith((f"{root}/mijialamp/", f"{root}/tools/"))}
         if not code_names <= expected_source:
             raise VerificationError("Código dentro del ZIP no está manifestado")
     return "runtime y source verificados"
