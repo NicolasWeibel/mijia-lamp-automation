@@ -1,5 +1,15 @@
-param([string]$InstallDir = "C:\ProgramData\MijiaLamp", [switch]$DeleteFiles, [switch]$DeleteSecrets)
+param([string]$InstallDir = [IO.Path]::Combine([Environment]::GetFolderPath("CommonApplicationData"), "MijiaLamp"), [switch]$DeleteFiles, [switch]$DeleteSecrets)
 $ErrorActionPreference = "Stop"
+$expected = Join-Path ([Environment]::GetFolderPath("CommonApplicationData")) "MijiaLamp"
+if ([IO.Path]::GetFullPath($InstallDir).TrimEnd('\') -ine [IO.Path]::GetFullPath($expected).TrimEnd('\')) {
+    throw "Por seguridad, Service sólo puede desinstalarse desde $expected."
+}
+if (Test-Path -LiteralPath $InstallDir) {
+    $installedItem = Get-Item -LiteralPath $InstallDir -Force
+    if (-not $installedItem.PSIsContainer -or ($installedItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "La carpeta de instalación no es un directorio normal: $InstallDir"
+    }
+}
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Ejecutá PowerShell como Administrador." }

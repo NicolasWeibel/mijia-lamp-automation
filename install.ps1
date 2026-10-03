@@ -1,5 +1,5 @@
 param(
-    [string]$InstallDir = "C:\ProgramData\MijiaLamp",
+    [string]$InstallDir = [IO.Path]::Combine([Environment]::GetFolderPath("CommonApplicationData"), "MijiaLamp"),
     [string]$ConfigPath = "",
     [string]$InteractiveUser = "",
     [switch]$EnableAutomation
@@ -18,6 +18,15 @@ $Swapped = $false
 $PreparedManifest = $null
 $StagingCreated = $false
 $OldAutomationStopped = $false
+
+function Assert-OfficialInstallDir {
+    $expected = Join-Path ([Environment]::GetFolderPath("CommonApplicationData")) "MijiaLamp"
+    $actualPath = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
+    $expectedPath = [IO.Path]::GetFullPath($expected).TrimEnd('\')
+    if ($actualPath -ine $expectedPath) {
+        throw "Por seguridad, Service sólo puede instalarse en $expectedPath."
+    }
+}
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -138,9 +147,11 @@ function Verify-PreparedRuntime {
     if ($actual.Count -ne $expected.Count) { throw "Runtime preparado contiene archivos no manifestados o faltantes." }
     foreach ($rel in $actual) { if (-not $expected.ContainsKey($rel)) { throw "Archivo no manifestado en runtime preparado: $rel" } }
 
+    $sourceExpected = @{}
     foreach ($entry in $manifest.source_files) {
         $rel = [string]$entry.path
         if (-not $rel -or $rel.Contains("..") -or [IO.Path]::IsPathRooted($rel)) { throw "Manifest source contiene ruta insegura: $rel" }
+        $sourceExpected[$rel.ToLowerInvariant()] = $true
         $full = Join-Path $SourceRoot ($rel.Replace('/', '\'))
         if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw "Archivo fuente preparado faltante: $rel" }
         $item = Get-Item -LiteralPath $full -Force
@@ -149,6 +160,9 @@ function Verify-PreparedRuntime {
         if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) {
             throw "El source cambió después de preparar el runtime: $rel. Volvé a ejecutar prepare-service-runtime.ps1."
         }
+    }
+    if (-not $sourceExpected.ContainsKey("install.ps1")) {
+        throw "Manifest source no incluye install.ps1; no ejecuto un instalador elevado sin verificar."
     }
     Write-Host "Runtime + source verificados; fase elevada offline." -ForegroundColor Green
 }
@@ -189,13 +203,11 @@ function Verify-StagingAgainstPreparedManifest {
             $sourceExpected[$rel.ToLowerInvariant()] = $true
         }
     }
-    foreach ($dir in @("mijialamp", "tools")) {
-        $dirPath = Join-Path $StageRoot $dir
-        $base = (Resolve-Path $StageRoot).Path
-        foreach ($item in Get-ChildItem -Path $dirPath -File -Recurse) {
-            $rel = $item.FullName.Substring($base.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
-            if (-not $sourceExpected.ContainsKey($rel)) { throw "TOCTOU: source no manifestado tras copia: $rel" }
-        }
+    $base = (Resolve-Path $StageRoot).Path
+    foreach ($item in Get-ChildItem -LiteralPath $StageRoot -Force -Recurse -File) {
+        $rel = $item.FullName.Substring($base.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
+        if ($rel.StartsWith("runtime/")) { continue }
+        if (-not $sourceExpected.ContainsKey($rel)) { throw "TOCTOU: source no manifestado tras copia: $rel" }
     }
 }
 
@@ -211,7 +223,8 @@ function Copy-ProjectFiles {
     )
     foreach ($file in $files) {
         $src = Join-Path $SourceRoot $file
-        if (Test-Path $src) { Copy-Item -Force $src (Join-Path $Destination $file) }
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "Falta archivo requerido de instalación: $file" }
+        Copy-Item -LiteralPath $src -Destination (Join-Path $Destination $file) -Force
     }
     foreach ($dir in @("mijialamp", "tools")) {
         $sourceDir = Join-Path $SourceRoot $dir
@@ -379,6 +392,7 @@ function Restore-PreviousInstall {
     Write-Warning "La automatización no se reinició. Comprobá el estado de Service y Agent, revisá los archivos y repetí la instalación desde una release verificada."
 }
 
+Assert-OfficialInstallDir
 Assert-Administrator
 if ((Resolve-Path $SourceRoot).Path -eq $InstallDir -or $SourceRoot -like "$InstallDir\*") {
     throw "Por seguridad transaccional, ejecutá install.ps1 desde la release extraída fuera de $InstallDir."

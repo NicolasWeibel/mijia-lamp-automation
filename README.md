@@ -306,7 +306,7 @@ Para preparar el repositorio público y publicar versiones mediante tags anotado
 
 Diseñado y probado principalmente alrededor de `yeelink.light.lamp22`. Otros modelos miIO pueden exponer propiedades/rangos diferentes.
 
-Python soportado para preparación/Portable: **3.10–3.12**.
+Python soportado para preparación/Portable: **3.10–3.12 en Windows x64**. Las dependencias se verifican con hashes SHA-256 de wheels antes de instalarse.
 
 ## Licencia
 

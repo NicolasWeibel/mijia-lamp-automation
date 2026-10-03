@@ -45,6 +45,9 @@ jobs:
       - name: Verify repository
         run: python scripts/check_repository.py
 
+      - name: Verify hashed runtime dependencies
+        run: python scripts/verify_dependency_pins.py
+
       - name: Ruff lint
         run: ruff check .
 
@@ -55,10 +58,14 @@ jobs:
         run: mypy mijialamp
 
       - name: Audit pinned runtime dependencies
+        shell: pwsh
         run: |
-          python -m pip_audit -r requirements.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.windows.lock.txt --no-deps --disable-pip --progress-spinner=off
-          python -m pip_audit -r requirements.miio.lock.txt --no-deps --disable-pip --progress-spinner=off
+          $plain = Join-Path $env:RUNNER_TEMP "mijialamp-audit-requirements.txt"
+          python scripts/verify_dependency_pins.py --plain-output $plain
+          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          python -m pip_audit -r $plain --no-deps --disable-pip --progress-spinner=off
+          if ($LASTEXITCODE -ne 0) { throw "La auditoría encontró dependencias vulnerables" }
+          Remove-Item -LiteralPath $plain
 
       - name: Check PowerShell syntax
         shell: pwsh
@@ -79,13 +86,14 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install "cyclonedx-bom==7.3.1"
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar CycloneDX" }
           New-Item -ItemType Directory -Force release | Out-Null
           $combined = "release/requirements-sbom.txt"
-          Get-Content requirements.lock.txt, requirements.windows.lock.txt, requirements.miio.lock.txt |
-            Where-Object { $_ -and -not $_.Trim().StartsWith('#') } |
-            Set-Content -Encoding ascii $combined
+          python scripts/verify_dependency_pins.py --plain-output $combined
+          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
           cyclonedx-py requirements $combined --output-format JSON --output-file "release/MijiaLamp-${env:RELEASE_TAG}.sbom.cdx.json"
-          Remove-Item $combined
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo generar el SBOM" }
+          Remove-Item -LiteralPath $combined
 
       - name: Build dependency wheel manifest
         shell: pwsh

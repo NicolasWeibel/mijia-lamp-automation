@@ -107,12 +107,14 @@ $Architecture = if ($launcher.Count -eq 2) {
 if (!(Test-Path (Join-Path $BasePrefix "python.exe"))) {
     throw "La instalación base de Python no se puede copiar de forma segura: $BasePrefix"
 }
+if ($Architecture -ne "AMD64") {
+    throw "Los hashes del runtime sólo cubren Windows x64 (AMD64). Arquitectura detectada: $Architecture"
+}
 
 Write-Host "Python origen: $BasePrefix ($PythonVersion / $Architecture)"
 Write-Host "Descargando wheels binarios fijados..."
-Invoke-Python $launcher @("-m", "pip", "download", "--disable-pip-version-check", "--only-binary=:all:", "--dest", $Wheelhouse, "-r", (Join-Path $Root "requirements.lock.txt"))
-Invoke-Python $launcher @("-m", "pip", "download", "--disable-pip-version-check", "--only-binary=:all:", "--dest", $Wheelhouse, "-r", (Join-Path $Root "requirements.windows.lock.txt"))
-Invoke-Python $launcher @("-m", "pip", "download", "--disable-pip-version-check", "--only-binary=:all:", "--no-deps", "--dest", $Wheelhouse, "-r", (Join-Path $Root "requirements.miio.lock.txt"))
+Invoke-Python $launcher @("-m", "pip", "download", "--disable-pip-version-check", "--require-hashes", "--only-binary=:all:", "--dest", $Wheelhouse, "-r", (Join-Path $Root "requirements.lock.txt"), "-r", (Join-Path $Root "requirements.windows.lock.txt"))
+Invoke-Python $launcher @("-m", "pip", "download", "--disable-pip-version-check", "--require-hashes", "--only-binary=:all:", "--no-deps", "--dest", $Wheelhouse, "-r", (Join-Path $Root "requirements.miio.lock.txt"))
 
 Write-Host "Construyendo copia privada de Python (sin site-packages del usuario)..."
 if (Test-Path $RuntimePython) { Remove-Item -Recurse -Force $RuntimePython }
@@ -133,11 +135,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $RuntimePython "Lib\site-pa
 $PrivatePython = Join-Path $RuntimePython "python.exe"
 & $PrivatePython -m ensurepip --upgrade
 if ($LASTEXITCODE -ne 0) { throw "ensurepip falló en runtime privado" }
-& $PrivatePython -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse -r (Join-Path $Root "requirements.lock.txt")
-if ($LASTEXITCODE -ne 0) { throw "No pude instalar requirements base en runtime privado" }
-& $PrivatePython -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse -r (Join-Path $Root "requirements.windows.lock.txt")
-if ($LASTEXITCODE -ne 0) { throw "No pude instalar requirements Windows en runtime privado" }
-& $PrivatePython -m pip install --disable-pip-version-check --no-index --find-links $Wheelhouse --no-deps -r (Join-Path $Root "requirements.miio.lock.txt")
+& $PrivatePython -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --no-index --find-links $Wheelhouse -r (Join-Path $Root "requirements.lock.txt") -r (Join-Path $Root "requirements.windows.lock.txt")
+if ($LASTEXITCODE -ne 0) { throw "No pude instalar requirements base/Windows en runtime privado" }
+& $PrivatePython -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --no-index --find-links $Wheelhouse --no-deps -r (Join-Path $Root "requirements.miio.lock.txt")
 if ($LASTEXITCODE -ne 0) { throw "No pude instalar python-miio en runtime privado" }
 
 # Remove package installers from the service runtime after construction. The installed

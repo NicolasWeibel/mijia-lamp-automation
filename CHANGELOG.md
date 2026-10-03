@@ -18,6 +18,11 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Security
 
+- Los locks fijan hashes SHA-256 de todos los wheels de runtime para Windows x64 y Python 3.10–3.12; Service y Portable usan `pip --require-hashes` al descargar/instalar dependencias.
+- CI valida los locks y reutiliza sus versiones sin hashes para la auditoría de vulnerabilidades y el SBOM.
+- El instalador exige que `install.ps1` figure en el manifiesto verificado y rechaza archivos extra en staging, incluidos scripts de raíz agregados después de preparar el runtime.
+- La preparación local Service y Portable acepta únicamente wheels binarios durante la instalación de dependencias.
+- La instalación y desinstalación Service rechazan rutas personalizadas fuera de `ProgramData\MijiaLamp` para impedir staging en ubicaciones modificables por el usuario y borrados administrativos accidentales.
 - El rollback y la desinstalación Service ya no ejecutan el Python ni `service.py` de una instalación anterior con privilegios de Administrador; ante un fallo se conservan los archivos, pero la automatización permanece detenida hasta una instalación verificada.
 - El instalador Service crea staging con ACL privadas desde el primer instante, valida propietario y permisos antes de ejecutar el runtime preparado y falla si `icacls` no puede proteger un archivo.
 - El directorio de backups se crea o valida antes de mover la instalación anterior; la prueba de Windows ejerce estas comprobaciones de ACL.

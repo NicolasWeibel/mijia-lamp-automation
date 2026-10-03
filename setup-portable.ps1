@@ -103,17 +103,20 @@ if (!(Test-Path $Venv)) {
 }
 
 $Python = Join-Path $Venv "Scripts\python.exe"
+$Architecture = (& $Python -c "import platform; print(platform.machine())").Trim()
+if ($LASTEXITCODE -ne 0) { throw "No pude detectar la arquitectura del Python Portable" }
+if ($Architecture -ne "AMD64") {
+    throw "Los hashes de las dependencias sólo cubren Windows x64 (AMD64). Arquitectura detectada: $Architecture"
+}
 $Wheelhouse = Join-Path $Root "wheelhouse"
-$PipCommon = @("-m", "pip", "install", "--disable-pip-version-check")
+$PipCommon = @("-m", "pip", "install", "--disable-pip-version-check", "--require-hashes", "--only-binary=:all:", "--force-reinstall")
 if ($Offline) {
     if (!(Test-Path $Wheelhouse)) { throw "-Offline requiere la carpeta wheelhouse." }
     $PipCommon += @("--no-index", "--find-links", $Wheelhouse)
 }
 
-& $Python @PipCommon -r (Join-Path $Root "requirements.lock.txt")
-if ($LASTEXITCODE -ne 0) { throw "Fallaron dependencias base" }
-& $Python @PipCommon -r (Join-Path $Root "requirements.windows.lock.txt")
-if ($LASTEXITCODE -ne 0) { throw "Fallaron dependencias Windows" }
+& $Python @PipCommon -r (Join-Path $Root "requirements.lock.txt") -r (Join-Path $Root "requirements.windows.lock.txt")
+if ($LASTEXITCODE -ne 0) { throw "Fallaron dependencias base/Windows" }
 & $Python @PipCommon --no-deps -r (Join-Path $Root "requirements.miio.lock.txt")
 if ($LASTEXITCODE -ne 0) { throw "Falló python-miio" }
 Push-Location $Root
