@@ -32,6 +32,8 @@ Tras instalar, `integrity-manifest.json` registra los archivos inmutables y `sec
 
 El directorio de staging nace con una ACL protegida que permite acceso sólo a Administradores y SYSTEM. El instalador verifica propietario y ACE antes de ejecutar el Python preparado, rechaza directorios anteriores con reparse points y detiene la instalación si `icacls` falla. El destino de backups se valida antes de detener el servicio anterior.
 
+Si la instalación falla después de detener la versión anterior, el rollback conserva sus archivos sin ejecutar su Python ni `service.py` como Administrador. No reinicia el Service ni el Agent: hay que comprobar su estado, revisar los archivos y repetir la instalación desde una release verificada. `uninstall.ps1` elimina el servicio mediante el administrador de servicios de Windows y tampoco ejecuta el runtime instalado con privilegios elevados.
+
 Luego se copia a `C:\ProgramData\MijiaLamp\runtime`, donde el usuario sólo recibe `Read & Execute`.
 
 ### Elevación sin package manager

@@ -97,6 +97,10 @@ jobs:
         shell: pwsh
         run: ./scripts/test-install-acl.ps1
 
+      - name: Exercise safe installer recovery
+        shell: pwsh
+        run: ./scripts/test-install-recovery.ps1
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -SkipPublisherCheck

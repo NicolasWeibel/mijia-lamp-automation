@@ -14,8 +14,6 @@ $ManifestPath = Join-Path $PreparedRoot "manifest.json"
 $PreparedPython = Join-Path $PreparedRoot "python"
 $Staging = "$InstallDir.staging-$([Guid]::NewGuid().ToString('N'))"
 $Backup = $null
-$OldTaskXml = $null
-$OldTaskEnabled = $false
 $Swapped = $false
 $PreparedManifest = $null
 $StagingCreated = $false
@@ -273,26 +271,39 @@ function Assert-RegularDirectoryIfPresent {
     }
 }
 
-function Stop-And-SnapshotOldAutomation {
-    try {
-        $task = Get-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -ErrorAction SilentlyContinue
-        if ($task) {
-            $script:OldTaskXml = Export-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent"
-            $script:OldTaskEnabled = $task.State -ne "Disabled"
-            Stop-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -ErrorAction SilentlyContinue
-            Unregister-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Confirm:$false -ErrorAction SilentlyContinue
+function Stop-OldAutomation {
+    $task = Get-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -ErrorAction SilentlyContinue
+    if ($task) {
+        if ($task.State -eq "Running") {
+            Stop-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -ErrorAction Stop
         }
-    } catch {}
-    try { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue } catch {}
+        Unregister-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Confirm:$false -ErrorAction Stop
+    }
+    $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    if ($service -and $service.Status -ne [ServiceProcess.ServiceControllerStatus]::Stopped) {
+        Stop-Service -Name $ServiceName -Force -ErrorAction Stop
+        $service.WaitForStatus([ServiceProcess.ServiceControllerStatus]::Stopped, [TimeSpan]::FromSeconds(15))
+    }
 }
 
 function Delete-ServiceDefinition {
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
         & sc.exe delete $ServiceName | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar la definición de $ServiceName" }
         for ($i=0; $i -lt 30; $i++) {
             if (!(Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) { break }
             Start-Sleep -Milliseconds 200
         }
+        if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+            throw "Windows todavía conserva la definición de $ServiceName"
+        }
+    }
+}
+
+function Disable-ServiceDefinition {
+    if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
+        & sc.exe config $ServiceName start= disabled | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "No se pudo deshabilitar $ServiceName tras el fallo de instalación" }
     }
 }
 
@@ -353,35 +364,19 @@ function Register-AgentTask {
 }
 
 function Restore-PreviousInstall {
-    try { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue } catch {}
-    try { Delete-ServiceDefinition } catch {}
+    try { Stop-Service -Name $ServiceName -Force -ErrorAction Stop } catch { Write-Warning $_.Exception.Message }
+    try { Disable-ServiceDefinition } catch { Write-Warning $_.Exception.Message }
+    try { Delete-ServiceDefinition } catch { Write-Warning $_.Exception.Message }
     try { Unregister-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Confirm:$false -ErrorAction SilentlyContinue } catch {}
     if (Test-Path $InstallDir) {
         $failed = "$InstallDir.failed-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
-        try { Move-Item -Force $InstallDir $failed } catch { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
+        Move-Item -LiteralPath $InstallDir -Destination $failed -ErrorAction Stop
     }
     if ($script:Backup -and (Test-Path $script:Backup)) {
-        Move-Item -Force $script:Backup $InstallDir
+        Move-Item -LiteralPath $script:Backup -Destination $InstallDir -ErrorAction Stop
         Write-Warning "Archivos anteriores restaurados en $InstallDir."
-        # Best-effort restore of a previous v3 service.
-        $oldPython = @(
-            (Join-Path $InstallDir "runtime\python.exe"),
-            (Join-Path $InstallDir ".venv\Scripts\python.exe")
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if ($oldPython -and (Test-Path (Join-Path $InstallDir "service.py"))) {
-            try {
-                & $oldPython (Join-Path $InstallDir "service.py") --startup auto install *> $null
-                & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" password= "" start= delayed-auto | Out-Null
-                Start-Service $ServiceName -ErrorAction SilentlyContinue
-            } catch {}
-        }
     }
-    if ($script:OldTaskXml) {
-        try {
-            Register-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Xml $script:OldTaskXml -Force | Out-Null
-            if (-not $script:OldTaskEnabled) { Disable-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" | Out-Null }
-        } catch {}
-    }
+    Write-Warning "La automatización no se reinició. Comprobá el estado de Service y Agent, revisá los archivos y repetí la instalación desde una release verificada."
 }
 
 Assert-Administrator
@@ -457,8 +452,8 @@ try {
             New-PrivateDirectory -Path $backupRoot
         }
     }
-    Stop-And-SnapshotOldAutomation
     $OldAutomationStopped = $true
+    Stop-OldAutomation
     if (Test-Path $InstallDir) {
         $backupPath = Join-Path $backupRoot (Get-Date -Format "yyyyMMdd-HHmmss-$([Guid]::NewGuid().ToString('N'))")
         Move-Item $InstallDir $backupPath
@@ -506,16 +501,10 @@ try {
     if ($Swapped -or $Backup) {
         Restore-PreviousInstall
     } elseif ($OldAutomationStopped) {
-        # A failed move left the previous installation in place. Resume it.
-        try { Start-Service -Name $ServiceName -ErrorAction SilentlyContinue } catch {}
-        if ($OldTaskXml) {
-            try {
-                Register-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" -Xml $OldTaskXml -Force | Out-Null
-                if (-not $OldTaskEnabled) {
-                    Disable-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" | Out-Null
-                }
-            } catch {}
-        }
+        # The previous files are still in place; do not execute or resume them after failure.
+        try { Stop-Service -Name $ServiceName -Force -ErrorAction Stop } catch { Write-Warning $_.Exception.Message }
+        try { Disable-ServiceDefinition } catch { Write-Warning $_.Exception.Message }
+        Write-Warning "La automatización no se reinició. Comprobá el estado de Service y Agent antes de volver a habilitarla."
     }
     if ($StagingCreated -and (Test-Path -LiteralPath $Staging)) {
         Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue

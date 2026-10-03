@@ -252,7 +252,7 @@ El modo Service aplica, entre otras medidas:
 - sin listener TCP;
 - runtime preparado/hash-eado antes de elevar;
 - instalador elevado offline y sin `pip`;
-- staging + segunda verificación de hashes para cerrar TOCTOU + rollback best-effort ante fallos;
+- staging + segunda verificación de hashes para cerrar TOCTOU + recuperación de archivos sin ejecutar el runtime anterior como Administrador; ante fallos, la automatización queda detenida hasta reinstalar desde una release verificada;
 - `integrity-manifest.json` permite revalidar código/runtime instalados;
 - `security-check.ps1` comprueba invariantes después de instalar.
 

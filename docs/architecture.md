@@ -24,7 +24,7 @@ SCM entrega directamente Preshutdown/Shutdown/Power al servicio, por lo que el O
 
 ## Install hardened
 
-La release Service puede incluir un runtime privado ya preparado. Si no lo incluye, el usuario ejecuta primero `prepare-service-runtime.ps1` sin Admin. `install.ps1` verifica SHA-256, prepara staging, detiene la versión anterior sólo al final, hace swap y aplica rollback best-effort si falla el smoke test.
+La release Service puede incluir un runtime privado ya preparado. Si no lo incluye, el usuario ejecuta primero `prepare-service-runtime.ps1` sin Admin. `install.ps1` verifica SHA-256, prepara staging, detiene la versión anterior sólo al final y hace swap. Si la instalación falla, restaura los archivos anteriores sin ejecutar su runtime con privilegios elevados; no reinicia la automatización hasta repetir una instalación verificada.
 
 ## IPC concurrente
 
