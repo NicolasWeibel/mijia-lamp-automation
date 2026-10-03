@@ -28,12 +28,8 @@ def is_night_now(cfg: dict, when: datetime | None = None) -> bool:
         start_key = "sunset"
     if end_key not in times:
         end_key = "sunrise"
-    night_start = times[start_key] + timedelta(
-        minutes=int(cfg.get("night_start_offset_minutes", 0))
-    )
-    night_end = times[end_key] + timedelta(
-        minutes=int(cfg.get("night_end_offset_minutes", 0))
-    )
+    night_start = times[start_key] + timedelta(minutes=int(cfg.get("night_start_offset_minutes", 0)))
+    night_end = times[end_key] + timedelta(minutes=int(cfg.get("night_end_offset_minutes", 0)))
     return now >= night_start or now < night_end
 
 

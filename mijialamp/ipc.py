@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 from .errors import MijiaLampError
 
@@ -39,9 +40,7 @@ def build_pipe_sddl(authorized_user_sid: str, server_sid: str | None = None) -> 
 
 
 def encode_message(payload: dict) -> bytes:
-    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode(
-        "utf-8"
-    )
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
     if len(raw) > _MAX_MESSAGE:
         raise IPCError("Mensaje IPC demasiado grande")
     return raw
@@ -156,10 +155,8 @@ class PipeServer:
     def stop(self) -> None:
         self._stop.set()
         if os.name == "nt":
-            try:
+            with contextlib.suppress(Exception):
                 PipeClient(self.pipe_name).notify("_wake", timeout=0.2)
-            except Exception:
-                pass
 
     def _security_attributes(self):
         import pywintypes
@@ -181,14 +178,10 @@ class PipeServer:
         import win32file
         import win32pipe
 
-        try:
+        with contextlib.suppress(Exception):
             win32pipe.DisconnectNamedPipe(handle)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             win32file.CloseHandle(handle)
-        except Exception:
-            pass
 
     def _reject_busy(self, handle) -> None:
         import win32file
@@ -226,13 +219,11 @@ class PipeServer:
             # in the service log, but a broken response pipe is not itself noteworthy.
             if not self._stop.is_set() and self.log:
                 self.log.error("IPC command failed: %s", exc, exc_info=True)
-            try:
+            with contextlib.suppress(Exception):
                 win32file.WriteFile(
                     handle,
                     encode_message({"ok": False, "error": f"{type(exc).__name__}: {exc}"}),
                 )
-            except Exception:
-                pass
         finally:
             self._close(handle)
             self._slots.release()
@@ -291,7 +282,5 @@ class PipeServer:
                 if slot_acquired:
                     self._slots.release()
                 if owned:
-                    try:
+                    with contextlib.suppress(Exception):
                         win32file.CloseHandle(handle)
-                    except Exception:
-                        pass

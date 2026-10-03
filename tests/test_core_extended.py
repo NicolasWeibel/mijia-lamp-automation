@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import json
 import os
 import tempfile
@@ -49,30 +48,69 @@ class ExtendedConfigTests(unittest.TestCase):
 
     def test_structural_validation_errors(self):
         cases = []
-        cfg = raw_config(); cfg["$schema"] = 1; cases.append(cfg)
-        cfg = raw_config(); cfg["location_name"] = 123; cases.append(cfg)
-        cfg = raw_config(); cfg["expected_model"] = " "; cases.append(cfg)
-        cfg = raw_config(); cfg["device_id"] = "0"; cases.append(cfg)
-        cfg = raw_config(); cfg["timezone"] = "Mars/Olympus"; cases.append(cfg)
-        cfg = raw_config(); cfg["latitude"] = 100; cases.append(cfg)
-        cfg = raw_config(); cfg["longitude"] = -181; cases.append(cfg)
-        cfg = raw_config(); cfg["elevation_meters"] = True; cases.append(cfg)
-        cfg = raw_config(); cfg["night_start"] = "midnight"; cases.append(cfg)
-        cfg = raw_config(); cfg["wind_down_start"] = "25:99"; cases.append(cfg)
-        cfg = raw_config(); cfg["light_profiles"] = []; cases.append(cfg)
-        cfg = raw_config(); del cfg["light_profiles"]["manual_day"]; cases.append(cfg)
-        cfg = raw_config(); cfg["light_profiles"]["evening"]["kelvin"] = 1000; cases.append(cfg)
-        cfg = raw_config(); cfg["light_profiles"]["evening"]["brightness"] = True; cases.append(cfg)
-        cfg = raw_config(); cfg["profile_transition_mode"] = "magic"; cases.append(cfg)
-        cfg = raw_config(); cfg["unknown_display_policy"] = "maybe"; cases.append(cfg)
-        cfg = raw_config(); cfg["external_change_policy"] = "maybe"; cases.append(cfg)
-        cfg = raw_config(); cfg["sync_interval_seconds"] = 1; cases.append(cfg)
-        cfg = raw_config(); cfg["retries"] = 0; cases.append(cfg)
-        cfg = raw_config(); cfg["expected_mac"] = "bad"; cases.append(cfg)
+        cfg = raw_config()
+        cfg["$schema"] = 1
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["location_name"] = 123
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["expected_model"] = " "
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["device_id"] = "0"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["timezone"] = "Mars/Olympus"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["latitude"] = 100
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["longitude"] = -181
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["elevation_meters"] = True
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["night_start"] = "midnight"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["wind_down_start"] = "25:99"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["light_profiles"] = []
+        cases.append(cfg)
+        cfg = raw_config()
+        del cfg["light_profiles"]["manual_day"]
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["light_profiles"]["evening"]["kelvin"] = 1000
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["light_profiles"]["evening"]["brightness"] = True
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["profile_transition_mode"] = "magic"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["unknown_display_policy"] = "maybe"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["external_change_policy"] = "maybe"
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["sync_interval_seconds"] = 1
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["retries"] = 0
+        cases.append(cfg)
+        cfg = raw_config()
+        cfg["expected_mac"] = "bad"
+        cases.append(cfg)
         for candidate in cases:
-            with self.subTest(candidate=candidate):
-                with self.assertRaises(ConfigError):
-                    validate_config(candidate)
+            with self.subTest(candidate=candidate), self.assertRaises(ConfigError):
+                validate_config(candidate)
 
     def test_non_object_config_rejected(self):
         with self.assertRaises(ConfigError):
@@ -85,8 +123,9 @@ class ExtendedConfigTests(unittest.TestCase):
             lock = root / "device_cache.lock"
             config_path = root / "config.json"
             config_path.write_text(json.dumps(raw_config()), encoding="utf-8")
-            with patch.object(config_mod, "DEVICE_CACHE_PATH", cache), patch.object(
-                config_mod, "DEVICE_CACHE_LOCK_PATH", lock
+            with (
+                patch.object(config_mod, "DEVICE_CACHE_PATH", cache),
+                patch.object(config_mod, "DEVICE_CACHE_LOCK_PATH", lock),
             ):
                 self.assertEqual(config_mod.read_device_cache(), {})
                 out = config_mod.update_device_cache(lamp_ip="192.168.50.20", marker="x")
@@ -216,7 +255,9 @@ class ControllerEdgeTransport:
 
     def set_power(self, power, *, ip=None, fast=False):
         self.commands.append(("power", power, fast))
-        self.physical = LampPhysicalState(power, self.physical.brightness, self.physical.kelvin, ip or self.physical.ip)
+        self.physical = LampPhysicalState(
+            power, self.physical.brightness, self.physical.kelvin, ip or self.physical.ip
+        )
 
     def apply_profile(self, profile, *, ip=None, fast=False):
         self.commands.append(("profile", profile.name, fast))
@@ -296,8 +337,9 @@ class ControllerExtendedTests(unittest.TestCase):
                 "dawn": datetime(2026, 1, 1, 5, 30, tzinfo=timezone.utc),
                 "dusk": datetime(2026, 1, 1, 18, 30, tzinfo=timezone.utc),
             }
-            with patch("mijialamp.controller.solar_times", return_value=fake_times), patch(
-                "mijialamp.controller.is_night_now", return_value=True
+            with (
+                patch("mijialamp.controller.solar_times", return_value=fake_times),
+                patch("mijialamp.controller.is_night_now", return_value=True),
             ):
                 solar = ctl.solar_status()
             self.assertTrue(solar["night"])
@@ -306,6 +348,7 @@ class ControllerExtendedTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 
 class PolicyAndLoopCoverageTests(unittest.TestCase):
     def test_policy_override_expiration_modes_and_unknown_display(self):
@@ -328,11 +371,15 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
         self.assertTrue(expire_overrides(cfg, state, now=2, night_now=False))
         self.assertFalse(state["external_override_active"])
 
-        state.update(external_override_active=True, external_override_until=1, external_override_profile="daytime")
+        state.update(
+            external_override_active=True, external_override_until=1, external_override_profile="daytime"
+        )
         cfg["external_change_policy"] = "respect_for_minutes"
         self.assertTrue(expire_overrides(cfg, state, now=2, night_now=False))
 
-        state.update(external_override_active=True, external_override_until=0, external_override_profile="other")
+        state.update(
+            external_override_active=True, external_override_until=0, external_override_profile="other"
+        )
         cfg["external_change_policy"] = "respect_until_next_profile"
         self.assertTrue(expire_overrides(cfg, state, now=2, night_now=False))
 
@@ -360,9 +407,11 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             lock = FileLock(Path(td) / "x.lock", timeout=0, poll=0)
-            with patch.object(lock, "_lock_now", side_effect=OSError("busy")):
-                with self.assertRaises(LockTimeoutError):
-                    lock.acquire()
+            with (
+                patch.object(lock, "_lock_now", side_effect=OSError("busy")),
+                self.assertRaises(LockTimeoutError),
+            ):
+                lock.acquire()
             lock.release()  # already released on timeout; must be harmless
 
     def test_path_directory_roles(self):
@@ -370,10 +419,11 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            with patch.object(paths, "DATA_DIR", root / "data"), patch.object(
-                paths, "LOG_DIR", root / "logs"
-            ), patch.object(paths, "SECRETS_DIR", root / "secrets"), patch.object(
-                paths, "USER_DATA_DIR", root / "user"
+            with (
+                patch.object(paths, "DATA_DIR", root / "data"),
+                patch.object(paths, "LOG_DIR", root / "logs"),
+                patch.object(paths, "SECRETS_DIR", root / "secrets"),
+                patch.object(paths, "USER_DATA_DIR", root / "user"),
             ):
                 paths.ensure_service_dirs()
                 self.assertTrue((root / "secrets").is_dir())
@@ -384,7 +434,8 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
 
     def test_service_core_periodic_and_network_loops(self):
         from mijialamp.service_core import ServiceCore
-        from tests.test_service_core import FakeController, NullLogger as CoreLogger
+        from tests.test_service_core import FakeController
+        from tests.test_service_core import NullLogger as CoreLogger
 
         controller = FakeController()
         controller.state.data["automation_enabled"] = True
@@ -398,8 +449,9 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
         self.assertIn(("sync", "periodic-sync", False), controller.calls)
 
         controller.calls.clear()
-        with patch.object(core, "_network_signature", side_effect=[("10.0.0.1",), ("10.0.0.2",)]), patch.object(
-            core._stop, "wait", side_effect=[False, True]
+        with (
+            patch.object(core, "_network_signature", side_effect=[("10.0.0.1",), ("10.0.0.2",)]),
+            patch.object(core._stop, "wait", side_effect=[False, True]),
         ):
             core._network_loop()
         self.assertIn(("network-changed",), controller.calls)
@@ -419,8 +471,9 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
             ctl.state.update(automation_enabled=True, display_on=True, display_updated_at=10**10)
             tr.physical = LampPhysicalState("on", 35, 3000, "192.168.1.100")
             ctl.cfg["external_change_policy"] = "enforce"
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.time.sleep", return_value=None
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.time.sleep", return_value=None),
             ):
                 forced = ctl.sync("force", force=True)
             self.assertTrue(forced["changed"])
@@ -429,8 +482,9 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
             # Invalid physical profile triggers apply-profile branch without power-on.
             tr.commands.clear()
             tr.physical = LampPhysicalState("on", 1, 6500, "192.168.1.100")
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"), patch(
-                "mijialamp.controller.time.sleep", return_value=None
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.time.sleep", return_value=None),
             ):
                 corrected = ctl.sync("profile-correct")
             self.assertTrue(corrected["changed"])
@@ -450,14 +504,18 @@ class PolicyAndLoopCoverageTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             ctl, _tr = ControllerExtendedTests().make_controller(td, BrokenTransport())
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"):
-                with self.assertRaises(CommunicationError):
-                    ctl.sync("expected-failure")
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                self.assertRaises(CommunicationError),
+            ):
+                ctl.sync("expected-failure")
             state = ctl.state.read()
             self.assertGreater(state["consecutive_failures"], 0)
             self.assertEqual(state["last_error"]["action"], "expected-failure")
 
-            with patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control2.lock"):
-                with self.assertRaises(CommunicationError):
-                    ctl.system_off("shutdown", fast=True)
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control2.lock"),
+                self.assertRaises(CommunicationError),
+            ):
+                ctl.system_off("shutdown", fast=True)
             self.assertEqual(ctl.state.read()["last_error"]["action"], "shutdown")

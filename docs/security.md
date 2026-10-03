@@ -30,6 +30,8 @@ El runtime resultante se hash-ea archivo por archivo. El instalador Admin verifi
 
 Tras instalar, `integrity-manifest.json` registra los archivos inmutables y `security-check.ps1` vuelve a verificar sus hashes.
 
+El directorio de staging nace con una ACL protegida que permite acceso sólo a Administradores y SYSTEM. El instalador verifica propietario y ACE antes de ejecutar el Python preparado, rechaza directorios anteriores con reparse points y detiene la instalación si `icacls` falla. El destino de backups se valida antes de detener el servicio anterior.
+
 Luego se copia a `C:\ProgramData\MijiaLamp\runtime`, donde el usuario sólo recibe `Read & Execute`.
 
 ### Elevación sin package manager
@@ -84,7 +86,7 @@ El hash manifest protege integridad entre preparación e instalación, pero no s
 Procedimiento para una release oficial ya publicada:
 
 1. Descargá el ZIP Service desde la página Releases del repositorio que elegiste confiar. Conservá el ZIP sin modificar.
-2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R OWNER/REPO`, reemplazando `VERSION` y usando la identidad real del repositorio. La verificación debe terminar correctamente antes de extraer o elevar permisos.
+2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation`, reemplazando `VERSION` por la versión descargada. La verificación debe terminar correctamente antes de extraer o elevar permisos.
 3. Extraé el ZIP y ejecutá `install.ps1` desde una PowerShell elevada. El instalador comprueba hashes del runtime y código fuente antes y después de copiar; no usa Internet ni `pip`.
 4. Tras la instalación, ejecutá `security-check.ps1` y `lampctl.py doctor` antes de habilitar la automatización.
 

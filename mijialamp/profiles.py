@@ -12,7 +12,9 @@ def _parse_hhmm(value: str) -> tuple[int, int]:
     return hour, minute
 
 
-def _at_local_date(base: datetime, hhmm: str, *, roll_to_next_day_if_before: datetime | None = None) -> datetime:
+def _at_local_date(
+    base: datetime, hhmm: str, *, roll_to_next_day_if_before: datetime | None = None
+) -> datetime:
     hour, minute = _parse_hhmm(hhmm)
     candidate = base.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if roll_to_next_day_if_before is not None and candidate <= roll_to_next_day_if_before:
@@ -63,7 +65,7 @@ def resolve_profile(cfg: dict, when: datetime | None = None, *, manual_day: bool
     if now >= anchors[-1][0]:
         return anchors[-1][1]
 
-    for (t0, p0), (t1, p1) in zip(anchors, anchors[1:]):
+    for (t0, p0), (t1, p1) in zip(anchors, anchors[1:], strict=False):
         if t0 <= now <= t1:
             span = max(1.0, (t1 - t0).total_seconds())
             ratio = (now - t0).total_seconds() / span

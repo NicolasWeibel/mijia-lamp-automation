@@ -8,8 +8,8 @@ SERVICE = "MijiaLampService"
 def main() -> int:
     if sys.platform != "win32":
         return 0
-    import win32service
     import win32evtlogutil
+    import win32service
 
     try:
         win32evtlogutil.AddSourceToRegistry("MijiaLamp", eventLogType="Application")

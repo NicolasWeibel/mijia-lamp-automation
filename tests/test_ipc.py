@@ -9,7 +9,7 @@ class IPCTests(unittest.TestCase):
         self.assertEqual(decode_message(encode_message(original)), original)
 
     def test_non_dict_rejected(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(IPCError):
             decode_message(b"[]")
 
     def test_pipe_server_rejects_invalid_worker_limit(self):

@@ -12,7 +12,7 @@ EXAMPLE_CONFIG = ROOT / "config.example.json"
 
 
 def example_config() -> dict:
-    with open(EXAMPLE_CONFIG, "r", encoding="utf-8") as fh:
+    with open(EXAMPLE_CONFIG, encoding="utf-8") as fh:
         return validate_config(json.load(fh))
 
 

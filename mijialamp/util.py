@@ -1,16 +1,18 @@
+import contextlib
 import json
 import os
-import tempfile
 import re
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 _SECRET_HEX_RE = re.compile(r"(?i)\b[0-9a-f]{32}\b")
+
 
 def redact_secrets(value) -> str:
     return _SECRET_HEX_RE.sub("<redacted-token>", str(value))
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -39,15 +41,11 @@ def atomic_write_json(path: Path, data: Any) -> None:
         tmp_path = None
     finally:
         if fd is not None:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
         if tmp_path:
-            try:
+            with contextlib.suppress(OSError):
                 os.unlink(tmp_path)
-            except OSError:
-                pass
 
 
 def cleanup_temp_files(directory: Path, older_than_seconds: float = 3600) -> int:

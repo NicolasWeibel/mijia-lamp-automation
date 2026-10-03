@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import ipaddress
 import json
 import os
@@ -91,7 +92,6 @@ _KNOWN_CONFIG_KEYS = set(DEFAULTS) | {
 }
 
 
-
 def _strict_bool(cfg: dict, key: str) -> bool:
     value = cfg.get(key)
     if type(value) is not bool:  # noqa: E721 - intentionally reject 0/1 and strings
@@ -164,7 +164,8 @@ def validate_config(cfg: dict) -> dict:
     unknown = sorted(set(cfg) - _KNOWN_CONFIG_KEYS)
     if unknown:
         raise ConfigError(
-            "Claves desconocidas en config.json: " + ", ".join(unknown)
+            "Claves desconocidas en config.json: "
+            + ", ".join(unknown)
             + ". Corregí posibles typos o ejecutá la migración v3."
         )
 
@@ -207,10 +208,21 @@ def validate_config(cfg: dict) -> dict:
     cfg["latitude"], cfg["longitude"] = lat, lon
     _number(cfg, "elevation_meters", minimum=-500, maximum=9000)
 
-    for key in ("night_mode", "respect_session_lock", "off_on_session_lock", "on_on_session_unlock",
-                "respect_user_presence", "off_when_user_inactive", "ignore_remote_sessions",
-                "discovery_enabled", "discovery_neighbor_enabled", "discovery_scan_enabled",
-                "notifications_enabled", "event_log_enabled", "tray_enabled"):
+    for key in (
+        "night_mode",
+        "respect_session_lock",
+        "off_on_session_lock",
+        "on_on_session_unlock",
+        "respect_user_presence",
+        "off_when_user_inactive",
+        "ignore_remote_sessions",
+        "discovery_enabled",
+        "discovery_neighbor_enabled",
+        "discovery_scan_enabled",
+        "notifications_enabled",
+        "event_log_enabled",
+        "tray_enabled",
+    ):
         _strict_bool(cfg, key)
 
     for key in ("night_start", "night_end"):
@@ -296,11 +308,11 @@ def validate_config(cfg: dict) -> dict:
 
 def _preserve_corrupt_cache(exc: Exception) -> None:
     stamp = int(epoch_now())
-    corrupt = DEVICE_CACHE_PATH.with_name(f"{DEVICE_CACHE_PATH.stem}.corrupt-{stamp}{DEVICE_CACHE_PATH.suffix}")
-    try:
+    corrupt = DEVICE_CACHE_PATH.with_name(
+        f"{DEVICE_CACHE_PATH.stem}.corrupt-{stamp}{DEVICE_CACHE_PATH.suffix}"
+    )
+    with contextlib.suppress(OSError):
         os.replace(DEVICE_CACHE_PATH, corrupt)
-    except OSError:
-        pass
 
 
 def read_device_cache() -> dict:
@@ -308,7 +320,7 @@ def read_device_cache() -> dict:
         return {}
     with FileLock(DEVICE_CACHE_LOCK_PATH, timeout=3):
         try:
-            with open(DEVICE_CACHE_PATH, "r", encoding="utf-8") as fh:
+            with open(DEVICE_CACHE_PATH, encoding="utf-8") as fh:
                 data = json.load(fh)
             if not isinstance(data, dict):
                 raise json.JSONDecodeError("cache root is not object", "", 0)
@@ -324,7 +336,7 @@ def update_device_cache(**fields) -> dict:
     with FileLock(DEVICE_CACHE_LOCK_PATH, timeout=5):
         data: dict = {}
         try:
-            with open(DEVICE_CACHE_PATH, "r", encoding="utf-8") as fh:
+            with open(DEVICE_CACHE_PATH, encoding="utf-8") as fh:
                 loaded = json.load(fh)
             if isinstance(loaded, dict):
                 data.update(loaded)
@@ -351,7 +363,7 @@ def _read_cached_ip() -> str | None:
 
 def load_config(path: Path = CONFIG_PATH) -> dict:
     try:
-        with open(path, "r", encoding="utf-8-sig") as fh:
+        with open(path, encoding="utf-8-sig") as fh:
             cfg = json.load(fh)
     except FileNotFoundError as exc:
         raise ConfigError(f"No existe {path}") from exc

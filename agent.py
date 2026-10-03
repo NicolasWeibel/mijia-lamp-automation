@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import os
 import threading
@@ -60,13 +61,18 @@ LRESULT = ctypes.c_ssize_t
 if hasattr(wintypes, "MSG"):
     MSG = wintypes.MSG
 else:
+
     class POINT(ctypes.Structure):
         _fields_ = [("x", LONG), ("y", LONG)]
 
     class MSG(ctypes.Structure):
         _fields_ = [
-            ("hwnd", HWND), ("message", UINT), ("wParam", WPARAM),
-            ("lParam", LPARAM), ("time", DWORD), ("pt", POINT),
+            ("hwnd", HWND),
+            ("message", UINT),
+            ("wParam", WPARAM),
+            ("lParam", LPARAM),
+            ("time", DWORD),
+            ("pt", POINT),
         ]
 
 
@@ -80,9 +86,15 @@ class POWERBROADCAST_SETTING(ctypes.Structure):
 
 class WNDCLASSW(ctypes.Structure):
     _fields_ = [
-        ("style", UINT), ("lpfnWndProc", ctypes.c_void_p), ("cbClsExtra", ctypes.c_int),
-        ("cbWndExtra", ctypes.c_int), ("hInstance", HINSTANCE), ("hIcon", HICON),
-        ("hCursor", HCURSOR), ("hbrBackground", HBRUSH), ("lpszMenuName", LPCWSTR),
+        ("style", UINT),
+        ("lpfnWndProc", ctypes.c_void_p),
+        ("cbClsExtra", ctypes.c_int),
+        ("cbWndExtra", ctypes.c_int),
+        ("hInstance", HINSTANCE),
+        ("hIcon", HICON),
+        ("hCursor", HCURSOR),
+        ("hbrBackground", HBRUSH),
+        ("lpszMenuName", LPCWSTR),
         ("lpszClassName", LPCWSTR),
     ]
 
@@ -138,10 +150,8 @@ class TrayUI:
         except Exception as exc:
             self.log.error("Tray action %s failed: %s", command, exc)
             if self.icon:
-                try:
+                with contextlib.suppress(Exception):
                     self.icon.notify(str(exc), "MijiaLamp")
-                except Exception:
-                    pass
             return None
 
     def _call_async(self, command: str, **kwargs) -> None:
@@ -213,10 +223,8 @@ class TrayUI:
                     title += " · PAUSADO"
                 self.icon.title = title[:127]
                 mode = "error" if err else ("paused" if paused else ("on" if power == "on" else "off"))
-                try:
+                with contextlib.suppress(Exception):
                     self.icon.icon = self._image(mode)
-                except Exception:
-                    pass
 
                 if bool(self.cfg.get("notifications_enabled", True)):
                     first = float(state.get("first_failure_at", 0) or 0)
@@ -225,7 +233,9 @@ class TrayUI:
                         key = (err.get("at"), err.get("type"), err.get("message"))
                         if key != self._last_error_key:
                             self._last_error_key = key
-                            self.icon.notify(str(err.get("message", "Error persistente")), "MijiaLamp necesita atención")
+                            self.icon.notify(
+                                str(err.get("message", "Error persistente")), "MijiaLamp necesita atención"
+                            )
             except Exception as exc:
                 self._poll_failures += 1
                 now = time.monotonic()
@@ -253,10 +263,8 @@ class TrayUI:
     def stop(self):
         self._stop.set()
         if self.icon:
-            try:
+            with contextlib.suppress(Exception):
                 self.icon.stop()
-            except Exception:
-                pass
 
 
 class LampAgent:
@@ -277,7 +285,9 @@ class LampAgent:
         self.suspend_handler = suspend_handler
         self.guard = threading.RLock()
         self.pending_off_generation = 0
-        self.suppress_off_until = time.monotonic() + float(self.cfg.get("suppress_off_after_start_seconds", 10))
+        self.suppress_off_until = time.monotonic() + float(
+            self.cfg.get("suppress_off_after_start_seconds", 10)
+        )
         self.last_display_state = None
         self.last_display_event_at = 0.0
         self.current_display_on: bool | None = None
@@ -296,6 +306,7 @@ class LampAgent:
                 func()
             except Exception as exc:
                 self.log.error("Acción async %s falló: %s", label, exc, exc_info=True)
+
         threading.Thread(target=worker, name=f"MijiaLamp-{label}", daemon=True).start()
 
     def _request(self, command: str, *, timeout: float = 4, **params):
@@ -383,7 +394,9 @@ class LampAgent:
     def resume(self, automatic: bool):
         with self.guard:
             self.pending_off_generation += 1
-            self.suppress_off_until = time.monotonic() + float(self.cfg.get("suppress_off_after_resume_seconds", 10))
+            self.suppress_off_until = time.monotonic() + float(
+                self.cfg.get("suppress_off_after_resume_seconds", 10)
+            )
         command = "resume-auto" if automatic else "resume-user"
         self._run_async(command, lambda: self._notify(command, timeout=0.5))
 
@@ -415,7 +428,7 @@ class LampAgent:
             # are explicitly allowed, treat the session as active instead.
             ignore_remote = bool(self.cfg.get("ignore_remote_sessions", True))
             with self.guard:
-                self.current_session_locked = True if ignore_remote else False
+                self.current_session_locked = bool(ignore_remote)
                 self.current_presence = "not_present" if ignore_remote else "present"
             self._run_async(
                 "remote-connect",
@@ -516,7 +529,9 @@ class LampAgent:
             if not needed.value:
                 return None
             buf = ctypes.create_unicode_buffer(max(2, needed.value // ctypes.sizeof(ctypes.c_wchar)))
-            if not user32.GetUserObjectInformationW(desktop, UOI_NAME, buf, needed.value, ctypes.byref(needed)):
+            if not user32.GetUserObjectInformationW(
+                desktop, UOI_NAME, buf, needed.value, ctypes.byref(needed)
+            ):
                 return None
             return buf.value.lower() != "default"
         finally:
@@ -538,8 +553,18 @@ class LampAgent:
         user32.RegisterClassW.argtypes = [ctypes.POINTER(WNDCLASSW)]
         user32.RegisterClassW.restype = ATOM
         user32.CreateWindowExW.argtypes = [
-            DWORD, LPCWSTR, LPCWSTR, DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-            ctypes.c_int, HWND, HMENU, HINSTANCE, LPVOID,
+            DWORD,
+            LPCWSTR,
+            LPCWSTR,
+            DWORD,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_int,
+            HWND,
+            HMENU,
+            HINSTANCE,
+            LPVOID,
         ]
         user32.CreateWindowExW.restype = HWND
         user32.GetMessageW.argtypes = [ctypes.POINTER(MSG), HWND, UINT, UINT]
@@ -552,9 +577,7 @@ class LampAgent:
         user32.DestroyWindow.restype = BOOL
         user32.PostQuitMessage.argtypes = [ctypes.c_int]
         user32.PostQuitMessage.restype = None
-        user32.RegisterPowerSettingNotification.argtypes = [
-            HANDLE, ctypes.POINTER(GUID), DWORD
-        ]
+        user32.RegisterPowerSettingNotification.argtypes = [HANDLE, ctypes.POINTER(GUID), DWORD]
         user32.RegisterPowerSettingNotification.restype = HANDLE
         user32.UnregisterPowerSettingNotification.argtypes = [HANDLE]
         user32.UnregisterPowerSettingNotification.restype = BOOL
@@ -565,7 +588,11 @@ class LampAgent:
         user32.OpenInputDesktop.argtypes = [DWORD, BOOL, DWORD]
         user32.OpenInputDesktop.restype = HANDLE
         user32.GetUserObjectInformationW.argtypes = [
-            HANDLE, ctypes.c_int, LPVOID, DWORD, ctypes.POINTER(DWORD)
+            HANDLE,
+            ctypes.c_int,
+            LPVOID,
+            DWORD,
+            ctypes.POINTER(DWORD),
         ]
         user32.GetUserObjectInformationW.restype = BOOL
         user32.CloseDesktop.argtypes = [HANDLE]
@@ -686,9 +713,7 @@ class LampAgent:
             ),
         )
 
-        threading.Thread(
-            target=self._heartbeat_loop, name="MijiaLampAgentHeartbeat", daemon=True
-        ).start()
+        threading.Thread(target=self._heartbeat_loop, name="MijiaLampAgentHeartbeat", daemon=True).start()
 
         msg = MSG()
         while user32.GetMessageW(ctypes.byref(msg), 0, 0, 0) > 0:
@@ -696,15 +721,11 @@ class LampAgent:
             user32.DispatchMessageW(ctypes.byref(msg))
 
         self.stop_event.set()
-        try:
+        with contextlib.suppress(Exception):
             wtsapi32.WTSUnRegisterSessionNotification(hwnd)
-        except Exception:
-            pass
         for _guid, handle in registrations:
-            try:
+            with contextlib.suppress(Exception):
                 user32.UnregisterPowerSettingNotification(handle)
-            except Exception:
-                pass
         self.tray.stop()
         self.log.info("MijiaLamp agent detenido")
 

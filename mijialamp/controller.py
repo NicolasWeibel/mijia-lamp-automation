@@ -9,10 +9,10 @@ from zoneinfo import ZoneInfo
 from .errors import CommunicationError, LockTimeoutError, StaleIntentError
 from .locking import FileLock
 from .miio_client import MiioLampClient
-from .secrets_store import SCOPE_LOCAL_MACHINE
 from .paths import CONTROL_LOCK_PATH
 from .policy import calculate_desired, expire_overrides
 from .profiles import resolve_profile
+from .secrets_store import SCOPE_LOCAL_MACHINE
 from .solar import is_night_now, solar_times
 from .state import StateStore
 from .transport import LampPhysicalState, LampTransport, ProfileValues
@@ -31,9 +31,7 @@ class LampController:
         self.cfg = cfg
         self.log = logger
         self.state = StateStore(logger=logger)
-        self.client: LampTransport = transport or MiioLampClient(
-            cfg, logger, token_scope=token_scope
-        )
+        self.client: LampTransport = transport or MiioLampClient(cfg, logger, token_scope=token_scope)
         self._send_lock = threading.RLock()
 
     def _expire_state(self) -> dict:
@@ -60,9 +58,7 @@ class LampController:
         data["at"] = utc_now_iso()
         self.state.update(last_physical=data)
 
-    def _record_success(
-        self, desired_power: str, profile: ProfileValues | None, reason: str
-    ) -> None:
+    def _record_success(self, desired_power: str, profile: ProfileValues | None, reason: str) -> None:
         self.state.update(
             last_success_at=utc_now_iso(),
             last_desired_state=desired_power,
@@ -86,14 +82,20 @@ class LampController:
     def _wait_for_ip(self, power: str, fast: bool, wait_override: float | None = None) -> str:
         if fast:
             return str(self.cfg["lamp_ip"])
-        wait = float(wait_override) if wait_override is not None else float(
-            self.cfg.get("network_wait_seconds_on", 20)
-            if power == "on"
-            else self.cfg.get("network_wait_seconds_off", 3)
+        wait = (
+            float(wait_override)
+            if wait_override is not None
+            else float(
+                self.cfg.get("network_wait_seconds_on", 20)
+                if power == "on"
+                else self.cfg.get("network_wait_seconds_off", 3)
+            )
         )
         return self.client.ensure_reachable(wait, allow_discovery=True)
 
-    def _read_with_recovery(self, desired_power: str, wait_override: float | None = None) -> LampPhysicalState:
+    def _read_with_recovery(
+        self, desired_power: str, wait_override: float | None = None
+    ) -> LampPhysicalState:
         ip = str(self.cfg["lamp_ip"])
         try:
             physical = self.client.read_state(ip, timeout=float(self.cfg["miio_timeout_seconds"]))
@@ -109,12 +111,9 @@ class LampController:
     def _profile_matches(self, physical: LampPhysicalState, expected: ProfileValues) -> bool:
         if physical.brightness is None or physical.kelvin is None:
             return False
-        return (
-            abs(physical.brightness - expected.brightness)
-            <= int(self.cfg.get("profile_brightness_tolerance", 1))
-            and abs(physical.kelvin - expected.kelvin)
-            <= int(self.cfg.get("profile_kelvin_tolerance", 25))
-        )
+        return abs(physical.brightness - expected.brightness) <= int(
+            self.cfg.get("profile_brightness_tolerance", 1)
+        ) and abs(physical.kelvin - expected.kelvin) <= int(self.cfg.get("profile_kelvin_tolerance", 25))
 
     def _confirm_expected(
         self,
@@ -132,9 +131,7 @@ class LampController:
         physical = self.client.read_state(ip)
         self._record_physical(physical)
         if physical.power != power:
-            raise CommunicationError(
-                f"La lámpara confirmó power={physical.power!r}; esperaba {power!r}"
-            )
+            raise CommunicationError(f"La lámpara confirmó power={physical.power!r}; esperaba {power!r}")
         if power == "on" and profile and not self._profile_matches(physical, profile):
             raise CommunicationError(
                 "La lámpara quedó encendida pero el perfil físico no coincide "
@@ -228,10 +225,14 @@ class LampController:
         )
 
         if desired.power == "hold":
-            self.state.update(last_desired_state="hold", last_desired_profile=None, last_success_reason=reason)
+            self.state.update(
+                last_desired_state="hold", last_desired_profile=None, last_success_reason=reason
+            )
             return {"changed": False, "desired": desired, "physical": None, "stale": False}
 
-        wait_override = float(self.cfg.get("network_wait_seconds_periodic", 3)) if reason == "periodic-sync" else None
+        wait_override = (
+            float(self.cfg.get("network_wait_seconds_periodic", 3)) if reason == "periodic-sync" else None
+        )
         try:
             physical = self._read_with_recovery(desired.power, wait_override=wait_override)
         except CommunicationError:
@@ -246,7 +247,11 @@ class LampController:
             raise
 
         self._guard(revision, critical_revision, "post-read")
-        expected = resolve_profile(self.cfg, manual_day=(desired.profile == "manual_day")) if desired.power == "on" else None
+        expected = (
+            resolve_profile(self.cfg, manual_day=(desired.profile == "manual_day"))
+            if desired.power == "on"
+            else None
+        )
         if desired.power == "on" and desired.profile and desired.profile.startswith("continuous:"):
             expected = resolve_profile(self.cfg)
 
@@ -282,7 +287,12 @@ class LampController:
             self._confirm_expected(ip, desired.power, expected, revision, critical_revision)
 
         self._record_success(desired.power, expected, reason)
-        self.log.info("Sync terminado changed=%s desired=%s profile=%s", changed, desired.power, expected.name if expected else None)
+        self.log.info(
+            "Sync terminado changed=%s desired=%s profile=%s",
+            changed,
+            desired.power,
+            expected.name if expected else None,
+        )
         return {"changed": changed, "desired": desired, "physical": physical, "stale": False}
 
     def sync(self, reason: str = "sync", force: bool = False):
@@ -356,9 +366,7 @@ class LampController:
             time.sleep(0.25)
             self.reassert_critical_off("manual-off", critical_revision)
 
-        threading.Thread(
-            target=reassert, name="MijiaLampManualOffReassert", daemon=True
-        ).start()
+        threading.Thread(target=reassert, name="MijiaLampManualOffReassert", daemon=True).start()
 
     def _critical_off_send(
         self,
@@ -371,7 +379,9 @@ class LampController:
         revision = int(state["intent_revision"])
         critical = int(state["critical_off_revision"])
         ip = str(self.cfg["lamp_ip"])
-        lock_timeout = (min(0.05, float(critical_timeout)) if critical_timeout is not None else 0.15) if fast else 10
+        lock_timeout = (
+            (min(0.05, float(critical_timeout)) if critical_timeout is not None else 0.15) if fast else 10
+        )
         try:
             with FileLock(CONTROL_LOCK_PATH, timeout=lock_timeout):
                 if not fast:
@@ -382,9 +392,7 @@ class LampController:
                 with self._send_lock:
                     self._guard(revision, critical, reason)
                     if critical_timeout is not None and hasattr(self.client, "set_power_critical_off"):
-                        self.client.set_power_critical_off(
-                            ip=ip, timeout=float(critical_timeout)
-                        )
+                        self.client.set_power_critical_off(ip=ip, timeout=float(critical_timeout))
                     else:
                         self.client.set_power("off", ip=ip, fast=fast)
         except LockTimeoutError:
@@ -406,7 +414,7 @@ class LampController:
         clear_overrides: bool = True,
         critical_timeout: float | None = None,
     ) -> None:
-        fields = {
+        fields: dict[str, object] = {
             "display_on": False,
             "display_pending_off": False,
             "display_updated_at": epoch_now(),
@@ -425,16 +433,12 @@ class LampController:
         state = self.state.bump_intent(reason, critical_off=True, **fields)
         self._record_command(reason)
         try:
-            self._critical_off_send(
-                reason, state, fast=fast, critical_timeout=critical_timeout
-            )
+            self._critical_off_send(reason, state, fast=fast, critical_timeout=critical_timeout)
         except Exception as exc:
             self.state.record_error(reason, exc)
             raise
 
-    def reassert_critical_off(
-        self, expected_reason: str, expected_critical_revision: int
-    ) -> None:
+    def reassert_critical_off(self, expected_reason: str, expected_critical_revision: int) -> None:
         """Second short OFF only if the exact critical intent is still current."""
         state = self.state.read()
         if int(state.get("critical_off_revision", 0)) != int(expected_critical_revision):
@@ -565,7 +569,9 @@ class LampController:
         )
 
     def set_automation_enabled(self, enabled: bool) -> dict:
-        return self.state.bump_intent("automation-enabled" if enabled else "automation-disabled", automation_enabled=bool(enabled))
+        return self.state.bump_intent(
+            "automation-enabled" if enabled else "automation-disabled", automation_enabled=bool(enabled)
+        )
 
     def pause(self, seconds: float | None = None, *, until_tomorrow: bool = False) -> float:
         if until_tomorrow:
@@ -610,12 +616,19 @@ class LampController:
             model, did = self.client.probe_identity(ip)
         physical = self.client.read_state(ip)
         self._record_physical(physical)
-        return {"ok": True, "ip": ip, "model": model, "device_id": did, "physical": asdict(physical), "token": "configured (not shown)"}
+        return {
+            "ok": True,
+            "ip": ip,
+            "model": model,
+            "device_id": did,
+            "physical": asdict(physical),
+            "token": "configured (not shown)",
+        }
 
     def status(self, *, query_physical: bool = True) -> dict:
         state = self._expire_state()
         desired = calculate_desired(self.cfg, state)
-        result = {"state": state, "desired": asdict(desired), "physical": None}
+        result: dict[str, object] = {"state": state, "desired": asdict(desired), "physical": None}
         if query_physical:
             try:
                 result["physical"] = asdict(self.client.read_state(str(self.cfg["lamp_ip"])))

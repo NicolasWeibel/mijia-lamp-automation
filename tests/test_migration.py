@@ -16,9 +16,10 @@ class MigrationTests(unittest.TestCase):
             path = Path(td) / "config.json"
             token = "a" * 32
             path.write_text(json.dumps({"token": token, "manual_day_profile": {"kelvin": 4000}}))
-            with patch("tools.migrate_legacy_config.token_exists", return_value=False), patch(
-                "tools.migrate_legacy_config.store_token"
-            ) as store:
+            with (
+                patch("tools.migrate_legacy_config.token_exists", return_value=False),
+                patch("tools.migrate_legacy_config.store_token") as store,
+            ):
                 changed, migrated = migrate(path)
             data = json.loads(path.read_text())
             self.assertTrue(changed)
@@ -33,9 +34,10 @@ class MigrationTests(unittest.TestCase):
             path = Path(td) / "config.json"
             token = "b" * 32
             path.write_text(json.dumps({"token": token}))
-            with patch("tools.migrate_legacy_config.token_exists", return_value=False) as exists, patch(
-                "tools.migrate_legacy_config.store_token"
-            ) as store:
+            with (
+                patch("tools.migrate_legacy_config.token_exists", return_value=False) as exists,
+                patch("tools.migrate_legacy_config.store_token") as store,
+            ):
                 changed, migrated = migrate(path, token_scope=SCOPE_CURRENT_USER)
             self.assertTrue(changed)
             self.assertTrue(migrated)
@@ -100,7 +102,6 @@ class MigrationTests(unittest.TestCase):
             data = json.loads(config.read_text())
             self.assertEqual(data["version"], 3)
             self.assertNotIn("manual_day_profile", data)
-
 
 
 if __name__ == "__main__":

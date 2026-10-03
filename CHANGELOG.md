@@ -4,19 +4,28 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ## [3.1.3] - 2026-09-30
 
+### Changed
+
+- Ruff completo, formato y mypy pasan a ser controles obligatorios de CI y del workflow de release.
+- La documentación de verificación de artefactos identifica el repositorio público real.
+
 ### Fixed
 
 - Corregido el arranque del Agent/Tray en ambos modos.
 - Corregida la normalización de rutas del manifiesto durante la preparación e instalación Service.
 - El manifiesto de source ya no incluye caches Python que se excluyen del ZIP.
+- El build manual usa un nombre de SBOM seguro cuando la rama contiene `/`.
 
 ### Security
 
+- El instalador Service crea staging con ACL privadas desde el primer instante, valida propietario y permisos antes de ejecutar el runtime preparado y falla si `icacls` no puede proteger un archivo.
+- El directorio de backups se crea o valida antes de mover la instalación anterior; la prueba de Windows ejerce estas comprobaciones de ACL.
 - El workflow verifica hashes, contenido del runtime y código de los ZIPs antes de publicar la release.
 - Documentada la verificación de procedencia de una release oficial antes de elevar permisos.
 - La publicación audita todos los pins de runtime y genera el manifest de wheels a partir del wheelhouse realmente usado.
 - Las pruebas de Windows instalan `tzdata` antes de usar `ZoneInfo`; el tag de release debe coincidir con la versión del proyecto.
 - `python-miio` usa un único pin explícito compartido por preparación, instalación, auditoría y SBOM.
+- El runtime excluye los módulos opcionales `android_backup` y `micloud` de `python-miio`: no intervienen en el control local de la lámpara y no ofrecen wheels para Windows.
 
 ## [3.1.2] - 2026-09-30
 
