@@ -102,6 +102,21 @@ function Invoke-CheckedIcacls {
     if ($LASTEXITCODE -ne 0) { throw "No pude aplicar ACL segura: $Path" }
 }
 
+function Write-Utf8NoBom {
+    param([string]$Path, [string]$Content)
+    [IO.File]::WriteAllText($Path, $Content, [Text.UTF8Encoding]::new($false))
+}
+
+function Set-SecureTreeAcl {
+    param([string]$Path, [string[]]$Grants)
+    # /inheritance:r with /T strips inherited ACEs from child files. Set the
+    # restricted ACL on the directory first, then reset descendants to inherit it.
+    Invoke-CheckedIcacls $Path (@('/inheritance:r', '/grant:r') + $Grants)
+    if (Get-ChildItem -LiteralPath $Path -Force | Select-Object -First 1) {
+        Invoke-CheckedIcacls (Join-Path $Path '*') @('/reset', '/T')
+    }
+}
+
 function Resolve-InteractiveIdentity {
     param([string]$Override)
     $name = $Override
@@ -262,7 +277,7 @@ function Write-IntegrityManifest {
         created_at_utc = [DateTime]::UtcNow.ToString("o")
         files = $entries
     }
-    $payload | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 (Join-Path $RootPath "integrity-manifest.json")
+    Write-Utf8NoBom (Join-Path $RootPath "integrity-manifest.json") ($payload | ConvertTo-Json -Depth 6)
 }
 
 function Copy-SafeRegularFile {
@@ -326,7 +341,7 @@ function Install-Service {
     Delete-ServiceDefinition
     & $Python $script --startup auto install
     if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar $ServiceName" }
-    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" password= "" start= delayed-auto | Out-Null
+    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" start= delayed-auto | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "No se pudo configurar LocalService" }
     & sc.exe sidtype $ServiceName unrestricted | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "No se pudo habilitar Service SID" }
@@ -342,24 +357,24 @@ function Install-Service {
 function Set-SecureAcls {
     param([string]$UserSid)
     $svc = "NT SERVICE\$ServiceName"
-    Invoke-CheckedIcacls $InstallDir @('/inheritance:r', '/grant:r',
+    Set-SecureTreeAcl $InstallDir @(
         '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(OI)(CI)RX", "${svc}:(OI)(CI)RX")
     foreach ($name in @("runtime", "mijialamp", "tools")) {
         $path = Join-Path $InstallDir $name
         if (Test-Path $path) {
-            Invoke-CheckedIcacls $path @('/inheritance:r', '/grant:r',
-                '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(OI)(CI)RX", "${svc}:(OI)(CI)RX", '/T')
+            Set-SecureTreeAcl $path @(
+                '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "*${UserSid}:(OI)(CI)RX", "${svc}:(OI)(CI)RX")
         }
     }
     $data = Join-Path $InstallDir "data"
-    Invoke-CheckedIcacls $data @('/inheritance:r', '/grant:r',
-        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)R", '/T')
+    Set-SecureTreeAcl $data @(
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)R")
     $logs = Join-Path $InstallDir "logs"
-    Invoke-CheckedIcacls $logs @('/inheritance:r', '/grant:r',
-        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)M", '/T')
+    Set-SecureTreeAcl $logs @(
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)M", "*${UserSid}:(OI)(CI)M")
     $secrets = Join-Path $InstallDir "secrets"
-    Invoke-CheckedIcacls $secrets @('/inheritance:r', '/grant:r',
-        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)F", '/T')
+    Set-SecureTreeAcl $secrets @(
+        '*S-1-5-18:(OI)(CI)F', '*S-1-5-32-544:(OI)(CI)F', "${svc}:(OI)(CI)F")
     $cfg = Join-Path $InstallDir "config.json"
     Invoke-CheckedIcacls $cfg @('/inheritance:r', '/grant:r',
         '*S-1-5-18:F', '*S-1-5-32-544:F', "${svc}:R", "*${UserSid}:M")
@@ -435,7 +450,7 @@ try {
     }
 
     $ServiceMeta = @{ version = 1; authorized_user_sid = $UserSid; authorized_user = $UserName }
-    $ServiceMeta | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $Staging "data\service_meta.json")
+    Write-Utf8NoBom (Join-Path $Staging "data\service_meta.json") ($ServiceMeta | ConvertTo-Json)
 
     $StagePython = Join-Path $Staging "runtime\python.exe"
     Push-Location $Staging
@@ -456,8 +471,6 @@ try {
         Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Get-ChildItem $Staging -Recurse -File -Include "*.pyc", "*.pyo" -ErrorAction SilentlyContinue |
         Remove-Item -Force -ErrorAction SilentlyContinue
-    Write-IntegrityManifest -RootPath $Staging
-
     if (Test-Path $InstallDir) {
         $backupRoot = Join-Path (Split-Path -Parent $InstallDir) "MijiaLamp-backups"
         if (Test-Path -LiteralPath $backupRoot) {
@@ -479,6 +492,9 @@ try {
     $Python = Join-Path $InstallDir "runtime\python.exe"
     $Pythonw = Join-Path $InstallDir "runtime\pythonw.exe"
     Install-Service -Python $Python
+    # pywin32 moves pythonservice.exe and copies a DLL into runtime during install.
+    # Record the final protected tree so the security check sees the actual files.
+    Write-IntegrityManifest -RootPath $InstallDir
     Set-SecureAcls -UserSid $UserSid
     Register-AgentTask -UserName $UserName -Pythonw $Pythonw
     Start-Service -Name $ServiceName

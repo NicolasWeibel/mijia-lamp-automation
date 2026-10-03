@@ -11,6 +11,8 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Fixed
 
+- La instalación Service en Windows PowerShell 5.1 configura LocalService sin argumentos vacíos, escribe JSON UTF-8 sin BOM y calcula el manifiesto de integridad después de que pywin32 prepare el ejecutable del servicio.
+- La verificación de seguridad distingue permisos de lectura y escritura al revisar el usuario interactivo.
 - Corregido el arranque del Agent/Tray en ambos modos.
 - Corregida la normalización de rutas del manifiesto durante la preparación e instalación Service.
 - El manifiesto de source ya no incluye caches Python que se excluyen del ZIP.
@@ -18,6 +20,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Security
 
+- Las ACL de los archivos instalados heredan permisos restringidos de sus carpetas; la prueba de Windows comprueba que no queden concesiones amplias en archivos hijos.
 - Los locks fijan hashes SHA-256 de todos los wheels de runtime para Windows x64 y Python 3.10–3.12; Service y Portable usan `pip --require-hashes` al descargar/instalar dependencias.
 - CI valida los locks y reutiliza sus versiones sin hashes para la auditoría de vulnerabilidades y el SBOM.
 - El instalador exige que `install.ps1` figure en el manifiesto verificado y rechaza archivos extra en staging, incluidos scripts de raíz agregados después de preparar el runtime.
