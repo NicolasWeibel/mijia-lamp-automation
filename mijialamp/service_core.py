@@ -223,7 +223,7 @@ class ServiceCore:
         if command == "suspend":
             not_after = request.get("not_after_monotonic")
             if not_after is not None and time.monotonic() > float(not_after):
-                self.log.warning("suspend-off-missed: evento vencido; OFF obsoleto descartado")
+                self.log.warning("suspend-off-missed: expired event; stale OFF discarded")
                 self.controller.record_windows_event("suspend-off-missed")
                 return {"off": False, "reason": "suspend", "expired": True}
             # Suspend is temporary: preserve manual-day/manual-off/external overrides.

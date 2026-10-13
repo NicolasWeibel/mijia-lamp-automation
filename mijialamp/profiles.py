@@ -43,15 +43,31 @@ def resolve_profile(cfg: dict, when: datetime | None = None, *, manual_day: bool
     tz = ZoneInfo(str(cfg["timezone"]))
     now = when.astimezone(tz) if when is not None else datetime.now(tz)
     times = solar_times(cfg, now)
+    if (
+        not cfg.get("night_mode", True)
+        and times.get("sunrise") is not None
+        and times["sunrise"] <= now < times["sunset"]
+    ):
+        return _profile(cfg, "manual_day")
     start_key = str(cfg.get("night_start", "sunset")).lower()
     if start_key not in times:
         start_key = "sunset"
     start = times[start_key] + timedelta(minutes=int(cfg.get("night_start_offset_minutes", 0)))
+    if now < start:
+        times = solar_times(cfg, now - timedelta(days=1))
+        start = times[start_key] + timedelta(minutes=int(cfg.get("night_start_offset_minutes", 0)))
 
-    # Anchor times can cross midnight. Each later anchor is rolled forward as needed.
-    wind = _at_local_date(start, cfg["wind_down_start"], roll_to_next_day_if_before=start)
-    pre = _at_local_date(wind, cfg["pre_sleep_start"], roll_to_next_day_if_before=wind)
-    bed = _at_local_date(pre, cfg["bedtime"], roll_to_next_day_if_before=pre)
+    # Use the same night on both sides of midnight. Bedtime anchors the earlier
+    # dimming phases even when sunset occurs after one of those phases.
+    bed = _at_local_date(start, cfg["bedtime"], roll_to_next_day_if_before=start)
+    pre = _at_local_date(bed, cfg["pre_sleep_start"])
+    if pre >= bed:
+        pre -= timedelta(days=1)
+    wind = _at_local_date(pre, cfg["wind_down_start"])
+    if wind >= pre:
+        wind -= timedelta(days=1)
+    wind = max(start, wind)
+    pre = max(wind, pre)
 
     anchors = [
         (start, _profile(cfg, "evening")),

@@ -1,6 +1,7 @@
 {
   "$schema": "./config.schema.json",
   "version": 3,
+  "ui_language": "en",
   "lamp_ip": "192.168.1.100",
   "expected_model": "yeelink.light.lamp22",
   "device_id": "123456789",
@@ -64,6 +65,7 @@
   "respect_user_presence": true,
   "off_when_user_inactive": false,
   "ignore_remote_sessions": true,
+  "service_prelogin_display": false,
   "network_wait_seconds_on": 20,
   "network_wait_seconds_off": 3,
   "network_wait_seconds_periodic": 3,

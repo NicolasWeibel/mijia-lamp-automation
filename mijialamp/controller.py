@@ -3,8 +3,8 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import asdict
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+
+from mijialamp.i18n import tr
 
 from .errors import CommunicationError, LockTimeoutError, StaleIntentError
 from .locking import FileLock
@@ -13,7 +13,7 @@ from .paths import CONTROL_LOCK_PATH
 from .policy import calculate_desired, expire_overrides
 from .profiles import resolve_profile
 from .secrets_store import SCOPE_LOCAL_MACHINE
-from .solar import is_night_now, solar_times
+from .solar import is_night_now, next_sunrise, solar_times
 from .state import StateStore
 from .transport import LampPhysicalState, LampTransport, ProfileValues
 from .util import epoch_now, utc_now_iso
@@ -75,8 +75,7 @@ class LampController:
         now_critical = int(current.get("critical_off_revision", 0))
         if now_rev != revision or now_critical != critical_revision:
             raise StaleIntentError(
-                f"{action} cancelado: intent cambió {revision}/{critical_revision} -> "
-                f"{now_rev}/{now_critical}"
+                tr("msg_89c4bee8acc2", action, revision, critical_revision, now_rev, now_critical)
             )
 
     def _wait_for_ip(self, power: str, fast: bool, wait_override: float | None = None) -> str:
@@ -102,7 +101,7 @@ class LampController:
             self._record_physical(physical)
             return physical
         except CommunicationError as first:
-            self.log.warning("Lectura en IP configurada falló: %s", first)
+            self.log.warning(tr("msg_7d5dbe50c538"), first)
             ip = self._wait_for_ip(desired_power, fast=False, wait_override=wait_override)
             physical = self.client.read_state(ip)
             self._record_physical(physical)
@@ -131,12 +130,16 @@ class LampController:
         physical = self.client.read_state(ip)
         self._record_physical(physical)
         if physical.power != power:
-            raise CommunicationError(f"La lámpara confirmó power={physical.power!r}; esperaba {power!r}")
+            raise CommunicationError(tr("msg_644150d480d9", physical.power, power))
         if power == "on" and profile and not self._profile_matches(physical, profile):
             raise CommunicationError(
-                "La lámpara quedó encendida pero el perfil físico no coincide "
-                f"(bright={physical.brightness}, ct={physical.kelvin}; "
-                f"esperado={profile.brightness}/{profile.kelvin})"
+                tr(
+                    "msg_05b7fbe6cf50",
+                    physical.brightness,
+                    physical.kelvin,
+                    profile.brightness,
+                    profile.kelvin,
+                )
             )
         return physical
 
@@ -305,7 +308,7 @@ class LampController:
             return {"changed": False, "desired": None, "physical": None, "stale": True}
         except Exception as exc:
             self.state.record_error(reason, exc)
-            self.log.error("%s falló: %s", reason, exc, exc_info=True)
+            self.log.error(tr("msg_d5d2b34ba8a9"), reason, exc, exc_info=True)
             raise
 
     def manual_on(self) -> ProfileValues:
@@ -399,7 +402,7 @@ class LampController:
             # A previous command is likely waiting for its UDP response. The critical revision
             # has already invalidated its next action; sending OFF now makes the newest power
             # packet the final intent in the common case.
-            self.log.warning("%s: control lock ocupado; enviando OFF crítico concurrente", reason)
+            self.log.warning(tr("msg_6f4085efc345"), reason)
             if critical_timeout is not None and hasattr(self.client, "set_power_critical_off"):
                 self.client.set_power_critical_off(ip=ip, timeout=float(critical_timeout))
             else:
@@ -442,11 +445,11 @@ class LampController:
         """Second short OFF only if the exact critical intent is still current."""
         state = self.state.read()
         if int(state.get("critical_off_revision", 0)) != int(expected_critical_revision):
-            self.log.info("Reassert OFF cancelado: apareció una intención crítica más nueva")
+            self.log.info(tr("msg_80349aa42d12"))
             return
         if state.get("last_intent_reason") != expected_reason:
             self.log.info(
-                "Reassert OFF cancelado: intent actual=%s, esperado=%s",
+                "OFF reassertion canceled: current intent=%s, expected=%s",
                 state.get("last_intent_reason"),
                 expected_reason,
             )
@@ -454,12 +457,12 @@ class LampController:
         try:
             self.client.set_power("off", ip=str(self.cfg["lamp_ip"]), fast=True)
             self.log.info(
-                "OFF crítico reassertado: %s rev=%s",
+                tr("msg_557321184819"),
                 expected_reason,
                 expected_critical_revision,
             )
         except Exception as exc:
-            self.log.warning("Reassert OFF falló (%s): %s", expected_reason, exc)
+            self.log.warning(tr("msg_135916113f79"), expected_reason, exc)
 
     def invalidate_interactive_state(self, event: str = "service-start") -> dict:
         """Fail-safe boot/service restart state: never assume an interactive user exists."""
@@ -489,7 +492,7 @@ class LampController:
             "not_present",
             "inactive",
         }:
-            raise ValueError(f"presence inválida: {user_presence}")
+            raise ValueError(tr("msg_9a96ceb5a30f", user_presence))
 
         current = self.state.read()
         fields: dict = {}
@@ -548,7 +551,7 @@ class LampController:
 
     def set_user_presence(self, presence: str, *, event: str = "presence") -> dict:
         if presence not in {"present", "not_present", "inactive"}:
-            raise ValueError(f"presence inválida: {presence}")
+            raise ValueError(tr("msg_9a96ceb5a30f", presence))
         return self.state.bump_intent(
             event,
             user_presence=presence,
@@ -575,11 +578,7 @@ class LampController:
 
     def pause(self, seconds: float | None = None, *, until_tomorrow: bool = False) -> float:
         if until_tomorrow:
-            tz = ZoneInfo(str(self.cfg["timezone"]))
-            now = datetime.now(tz)
-            hour, minute = map(int, self.cfg["pause_until_tomorrow_time"].split(":"))
-            target = (now + timedelta(days=1)).replace(hour=hour, minute=minute, second=0, microsecond=0)
-            until = target.timestamp()
+            until = next_sunrise(self.cfg).timestamp()
         elif seconds is None or seconds < 0:
             until = -1.0
         else:
@@ -590,7 +589,12 @@ class LampController:
     def resume_automation(self) -> None:
         self.state.bump_intent(
             "resume-automation",
+            automation_enabled=True,
             automation_paused_until=0.0,
+            manual_day_active=False,
+            manual_day_started_at=0.0,
+            manual_off_active=False,
+            manual_off_until=0.0,
             external_override_active=False,
             external_override_until=0.0,
             external_override_profile=None,

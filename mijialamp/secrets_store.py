@@ -9,6 +9,8 @@ import re
 from ctypes import wintypes
 from pathlib import Path
 
+from mijialamp.i18n import tr
+
 from .errors import SecretError
 from .paths import TOKEN_PATH
 from .util import atomic_write_json
@@ -34,7 +36,7 @@ def _blob(data: bytes):
 
 def _require_windows() -> None:
     if os.name != "nt":
-        raise SecretError("DPAPI sólo está disponible en Windows")
+        raise SecretError(tr("msg_8a79ccc08a04"))
 
 
 def _normalize_scope(scope: str) -> str:
@@ -42,7 +44,7 @@ def _normalize_scope(scope: str) -> str:
     if value == _LEGACY_MACHINE_SCOPE:
         return SCOPE_LOCAL_MACHINE
     if value not in {SCOPE_CURRENT_USER, SCOPE_LOCAL_MACHINE}:
-        raise SecretError(f"Scope DPAPI no soportado: {scope!r}")
+        raise SecretError(tr("msg_6798fa3d67e0", scope))
     return value
 
 
@@ -79,7 +81,7 @@ def _protect(raw: bytes, *, scope: str) -> bytes:
     # Keep buffers alive until CryptProtectData returns.
     _ = in_buf, entropy_buf
     if not ok:
-        raise SecretError(f"CryptProtectData falló: {ctypes.get_last_error()}")
+        raise SecretError(tr("msg_64dcb96f7852", ctypes.get_last_error()))
     try:
         return ctypes.string_at(out_blob.pbData, out_blob.cbData)
     finally:
@@ -120,7 +122,7 @@ def _unprotect(cipher: bytes, *, scope: str) -> bytes:
     )
     _ = normalized, in_buf, entropy_buf
     if not ok:
-        raise SecretError(f"CryptUnprotectData falló: {ctypes.get_last_error()}")
+        raise SecretError(tr("msg_caa7ae005d16", ctypes.get_last_error()))
     try:
         return ctypes.string_at(out_blob.pbData, out_blob.cbData)
     finally:
@@ -130,7 +132,7 @@ def _unprotect(cipher: bytes, *, scope: str) -> bytes:
 def validate_token(token: str) -> str:
     token = str(token).strip()
     if not _TOKEN_RE.fullmatch(token):
-        raise SecretError("El token debe contener exactamente 32 caracteres hexadecimales")
+        raise SecretError(tr("msg_9d8445d309e2"))
     return token.lower()
 
 
@@ -144,11 +146,11 @@ def token_metadata(path: Path = TOKEN_PATH) -> dict:
         version = int(payload.get("version", 1))
         return {"version": version, "scope": scope}
     except FileNotFoundError as exc:
-        raise SecretError("No hay token configurado") from exc
+        raise SecretError(tr("msg_5844e6fa4521")) from exc
     except SecretError:
         raise
     except Exception as exc:
-        raise SecretError("El metadata del token almacenado es inválido") from exc
+        raise SecretError(tr("msg_b0330c97e3c5")) from exc
 
 
 def token_exists(path: Path = TOKEN_PATH, *, expected_scope: str | None = None) -> bool:
@@ -189,18 +191,16 @@ def load_token(
             payload = json.load(fh)
         scope = _normalize_scope(str(payload.get("scope", _LEGACY_MACHINE_SCOPE)))
         if expected_scope is not None and scope != _normalize_scope(expected_scope):
-            raise SecretError(
-                f"El token usa scope DPAPI {scope!r}; se esperaba {_normalize_scope(expected_scope)!r}"
-            )
+            raise SecretError(tr("msg_69c8032c947f", scope, _normalize_scope(expected_scope)))
         cipher = base64.b64decode(payload["ciphertext_b64"], validate=True)
         token = _unprotect(cipher, scope=scope).decode("ascii")
         return validate_token(token)
     except SecretError:
         raise
     except FileNotFoundError as exc:
-        raise SecretError("No hay token configurado. Ejecutá el importador correspondiente") from exc
+        raise SecretError(tr("msg_814c238aff6a")) from exc
     except Exception as exc:
-        raise SecretError("No se pudo leer/descifrar el token almacenado") from exc
+        raise SecretError(tr("msg_c6c8a0fbfa0d")) from exc
 
 
 def migrate_token_scope(

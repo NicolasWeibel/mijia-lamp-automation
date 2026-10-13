@@ -1,3 +1,6 @@
+﻿. (Join-Path (Split-Path -Parent $PSScriptRoot) 'i18n.ps1')
+$env:MIJIALAMP_LANGUAGE = 'es'
+Initialize-MijiaLampLanguage -Language es
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $installer = Join-Path $root "install.ps1"

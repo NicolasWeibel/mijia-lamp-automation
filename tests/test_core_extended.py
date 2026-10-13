@@ -315,7 +315,10 @@ class ControllerExtendedTests(unittest.TestCase):
             self.assertGreater(ctl.state.read()["intent_revision"], before)
             forever = ctl.pause(None)
             self.assertEqual(forever, -1.0)
-            tomorrow = ctl.pause(until_tomorrow=True)
+            with patch("mijialamp.controller.next_sunrise") as sunrise:
+                sunrise.return_value.timestamp.return_value = time.time() + 7200
+                tomorrow = ctl.pause(until_tomorrow=True)
+                sunrise.assert_called_once_with(ctl.cfg)
             self.assertGreater(tomorrow, time.time())
             with self.assertRaises(ValueError):
                 ctl.update_interactive_snapshot(user_presence="bogus")

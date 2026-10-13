@@ -9,8 +9,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mijialamp.config import load_config, update_device_cache, update_lamp_ip
+from mijialamp.i18n import tr
 from mijialamp.paths import ensure_service_dirs
-from mijialamp.secrets_store import SCOPE_CURRENT_USER, SCOPE_LOCAL_MACHINE, store_token
+from mijialamp.secrets_store import SCOPE_CURRENT_USER, SCOPE_LOCAL_MACHINE, load_token, store_token
 
 TOKEN_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 DID_KEYS = ("did", "device_id", "deviceId", "id")
@@ -90,28 +91,43 @@ def find_device(data, expected_did: str):
                         matches.append((sub, subpath))
                         break
     if not matches:
-        raise RuntimeError(f"No encontré token para DID {expected_did}")
+        raise RuntimeError(tr("msg_506731dc1e7d", expected_did))
     return matches[0]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Importa un token de mihome-ctl sin mostrarlo")
+    parser = argparse.ArgumentParser(description=tr("msg_8a249fece9d5"))
     parser.add_argument("--source", type=Path)
+    parser.add_argument("--encrypted-source", type=Path)
     parser.add_argument("--did")
     parser.add_argument(
         "--scope", choices=(SCOPE_LOCAL_MACHINE, SCOPE_CURRENT_USER), default=SCOPE_LOCAL_MACHINE
     )
     args = parser.parse_args()
 
+    if args.source and args.encrypted_source:
+        parser.error("--source y --encrypted-source son excluyentes")
+
     ensure_service_dirs()
     cfg = load_config()
     expected_did = str(args.did or cfg["device_id"])
+
+    if args.encrypted_source:
+        # The GUI creates this LocalMachine/CurrentUser DPAPI blob before setup.
+        # Decrypting and re-encrypting occurs in this process; the token is never
+        # passed through command-line arguments, logs or a plaintext JSON file.
+        token = load_token(args.encrypted_source, expected_scope=args.scope)
+        store_token(token, scope=args.scope)
+        print(tr("msg_fa0482a5051d"))
+        print(tr("msg_c106960738f6") + expected_did)
+        print(tr("msg_ac0532150db1", args.scope))
+        return 0
 
     source = args.source
     if source is None:
         source = next((p for p in candidate_files() if p.is_file()), None)
     if source is None or not source.is_file():
-        print("ERROR: no encontré mi-tokens.json. Pasá -Source a import-token.ps1.")
+        print(tr("msg_bc07d7ba3181"))
         return 2
 
     with open(source, encoding="utf-8-sig") as fh:
@@ -121,7 +137,7 @@ def main() -> int:
 
     model = get_first(obj, MODEL_KEYS)
     if model and str(model) != str(cfg["expected_model"]):
-        print(f"ERROR: el DID coincide pero el modelo es {model!r}; esperaba {cfg['expected_model']!r}")
+        print(tr("msg_8e4b16318233", model, cfg["expected_model"]))
         return 3
 
     store_token(token, scope=args.scope)
@@ -141,13 +157,13 @@ def main() -> int:
         except ValueError:
             imported_ip = None
 
-    print("Importación OK")
+    print(tr("msg_329375e3e8cb"))
     print(f"  DID: {expected_did}")
-    print(f"  Modelo: {model or cfg['expected_model']}")
+    print(tr("msg_b53d10f63284", model or cfg["expected_model"]))
     print(f"  IP: {imported_ip or cfg['lamp_ip']}")
     if imported_mac:
         print(f"  MAC: {imported_mac}")
-    print(f"  Token: almacenado con DPAPI {args.scope} (no mostrado)")
+    print(tr("msg_ac0532150db1", args.scope))
     print(f"  Fuente: {source}")
     return 0
 

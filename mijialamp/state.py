@@ -6,6 +6,8 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
+from mijialamp.i18n import tr
+
 from .locking import FileLock
 from .paths import STATE_LOCK_PATH, STATE_PATH
 from .util import atomic_write_json, epoch_now, redact_secrets, utc_now_iso
@@ -76,7 +78,7 @@ class StateStore:
                 corrupt = candidate
             if self.log:
                 self.log.error(
-                    "runtime_state corrupto: %s; backup=%s; se reinicia estado lógico",
+                    tr("msg_07b41d1141bd"),
                     exc,
                     corrupt,
                 )

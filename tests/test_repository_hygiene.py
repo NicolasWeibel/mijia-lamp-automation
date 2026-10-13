@@ -27,6 +27,13 @@ class RepositoryHygieneTests(unittest.TestCase):
         for entry in ("config.json", "secrets/", "data/", "logs/", "mi-tokens.json"):
             self.assertIn(entry, text)
 
+    def test_windows_powershell_scripts_with_accents_have_utf8_bom(self):
+        scripts = (*ROOT.glob("*.ps1"), *(ROOT / "scripts").glob("*.ps1"))
+        for path in scripts:
+            raw = path.read_bytes()
+            if any(value >= 128 for value in raw):
+                self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), path.name)
+
     def test_agent_does_not_import_device_or_secret_layers(self):
         text = (ROOT / "agent.py").read_text(encoding="utf-8")
         self.assertNotIn("secrets_store", text)

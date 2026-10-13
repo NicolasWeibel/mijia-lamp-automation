@@ -1,29 +1,32 @@
-# Configuración recomendada de GitHub
+# Recommended GitHub setup
 
-## Primera publicación
+[English](github-setup.md) | [Español](es/github-setup.md)
 
-1. Publicá solamente la carpeta fuente del proyecto como raíz del repositorio. Las carpetas `MijiaLamp-Portable-*` y `MijiaLamp-Service-*` son artefactos locales y no deben subirse como código fuente.
-2. Creá un repositorio público vacío, sin agregar README, licencia o `.gitignore` desde GitHub: esos archivos ya están en el proyecto.
-3. Antes del primer push, ejecutá `python scripts/check_repository.py`, `python scripts/verify_dependency_pins.py` y `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-powershell.ps1`. Revisá además `git status --short` y `git ls-files` para detectar cualquier dato personal o secreto.
-4. Desde la carpeta `mijia-lamp-automation`, agregá el remoto del repositorio vacío y subí solamente `main`:
+
+## First publication
+
+1. Publish only the project source folder as the repository root. `MijiaLamp-Portable-*` and `MijiaLamp-Service-*` folders are local artifacts and must not be uploaded as source code.
+2. Create an empty public repository without adding a README, license, or `.gitignore` from GitHub; these files are already in the project.
+3. Before the first push, run `python scripts/check_repository.py`, `python scripts/verify_dependency_pins.py`, and `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/check-powershell.ps1`. Also inspect `git status --short` and `git ls-files` for personal data or secrets.
+4. From the `mijia-lamp-automation` folder, add the empty repository as a remote and push only `main`:
 
    ```powershell
    git remote add origin https://github.com/NicolasWeibel/mijia-lamp-automation.git
    git push -u origin main
    ```
 
-   Este paso ya se completó para `NicolasWeibel/mijia-lamp-automation`; no repitas `git remote add` si `origin` ya existe. No uses `git push --tags` en la primera subida.
-5. Esperá a que terminen todos los jobs de CI. La primera release debe esperar también una prueba manual de Portable y Service con una lámpara real en Windows.
-6. Configurá protección de `main`, alertas de dependencias, protección contra secretos y reglas para tags `v*` antes de publicar la primera release.
-7. Publicá `v3.1.3` sólo cuando esas comprobaciones estén verdes. El workflow generará y verificará los ZIPs antes de crear la release.
+   This has already been done for `NicolasWeibel/mijia-lamp-automation`; do not run `git remote add` again if `origin` exists. Do not use `git push --tags` for the first push.
+5. Wait for every CI job to finish. The first release should also wait for a manual Portable and Service test with a real lamp on Windows.
+6. Configure `main` branch protection, dependency alerts, secret protection, and `v*` tag rules before publishing the first release.
+7. Publish `v3.1.3` only when those checks are green. The workflow builds and verifies the ZIPs before creating the release.
 
-El workflow está preparado, pero ningún ZIP local tiene todavía procedencia de GitHub. Esa procedencia existirá después de que una release se construya y se atestigüe desde el repositorio publicado.
+The workflow is ready, but no local ZIP yet has GitHub provenance. That provenance will exist after a release is built and attested from the published repository.
 
-## Repositorio
+## Repository
 
-Nombre sugerido: `mijia-lamp-automation`
+Suggested name: `mijia-lamp-automation`
 
-Descripción:
+Description:
 
 > Windows-native local automation for Xiaomi/Mijia lamps with a low-privilege service, Win32 session/power events, solar profiles and DPAPI-protected miIO tokens.
 
@@ -31,33 +34,33 @@ Topics:
 
 `xiaomi`, `mijia`, `yeelight`, `python`, `windows-11`, `python-miio`, `home-automation`, `dpapi`, `win32`
 
-## Protección de `main`
+## Protect `main`
 
-- Pull Request requerido.
-- Status checks de CI requeridos.
-- Conversaciones resueltas antes de merge.
-- Bloquear force-push/delete.
-- Requerir aprobación adicional para cambios bajo `.github/workflows/` si hay más mantenedores.
+- Require a pull request.
+- Require CI status checks.
+- Resolve conversations before merge.
+- Block force-push and deletion.
+- Require additional approval for changes under `.github/workflows/` if there are other maintainers.
 
 ## Security
 
-Habilitar:
+Enable:
 
 - Dependabot alerts/security updates.
-- Secret scanning y push protection cuando estén disponibles.
+- Secret scanning and push protection when available.
 - Private vulnerability reporting.
-- Artifact attestations para releases públicas.
+- Artifact attestations for public releases.
 
-## Versiones y releases
+## Versions and releases
 
-El proyecto usa versionado semántico `MAJOR.MINOR.PATCH`. Cada release corresponde a un único commit de `main` y a un tag anotado `vMAJOR.MINOR.PATCH`. Los tags publicados no se mueven; una corrección posterior usa una nueva versión.
+The project uses `MAJOR.MINOR.PATCH` semantic versioning. Each release corresponds to one commit on `main` and an annotated `vMAJOR.MINOR.PATCH` tag. Published tags are never moved; corrections use a new version.
 
-Para preparar una versión nueva:
+To prepare a new version:
 
-1. Actualizá `pyproject.toml`, `mijialamp/__init__.py`, `install.ps1`, `prepare-service-runtime.ps1`, `setup-portable.ps1` y `scripts/build-dependency-manifest.ps1`. Actualizá también las pruebas que incluyen la versión en fixtures. `scripts/check_repository.py` comprueba que los scripts de instalación coincidan con la versión del proyecto.
-2. Agregá una entrada fechada en `CHANGELOG.md` y actualizá documentación o pins de dependencias si corresponde.
-3. Abrí un PR, revisá los cambios y esperá CI verde en `main` tras el merge. Probá Portable y Service en Windows con una lámpara real para la primera release y para cambios que afecten instalación o comportamiento físico.
-4. Desde `main` actualizado y limpio, creá y subí sólo el tag de esa versión:
+1. Update `pyproject.toml`, `mijialamp/__init__.py`, `install.ps1`, `prepare-service-runtime.ps1`, `setup-portable.ps1`, and `scripts/build-dependency-manifest.ps1`. Also update tests that include the version in fixtures. `scripts/check_repository.py` checks that installation scripts match the project version.
+2. Add a dated entry to `CHANGELOG.md` and update documentation or dependency pins as needed.
+3. Open a PR, review the changes, and wait for green CI on `main` after merge. Test Portable and Service on Windows with a real lamp for the first release and for changes affecting installation or physical behavior.
+4. From an up-to-date, clean `main`, create and push only the version tag:
 
    ```powershell
    git switch main
@@ -67,10 +70,10 @@ Para preparar una versión nueva:
    git push origin v3.1.3
    ```
 
-   Reemplazá `3.1.3` por la versión preparada. El workflow rechaza tags ligeros, tags que no apunten a un commit de `main` y tags que no coincidan con `pyproject.toml`.
+   Replace `3.1.3` with the prepared version. The workflow rejects lightweight tags, tags that do not point to a commit on `main`, and tags that do not match `pyproject.toml`.
 
-El workflow de release audita los pins, construye ZIP/checksum/SBOM/manifest de dependencias, verifica el contenido de los ZIPs, atestigua los artefactos y crea GitHub Release. Revisá que el workflow termine correctamente y verificá el ZIP descargado antes de instalarlo.
+The release workflow audits pins, builds ZIP/checksum/SBOM/dependency manifest, verifies ZIP contents, attests the artifacts, and creates the GitHub Release. Check that the workflow succeeds and verify the downloaded ZIP before installing it.
 
-## Licencia
+## License
 
-El proyecto incluye GPL-3.0-only explícita. No reemplazarla por una licencia permisiva sin revisar primero la interacción con `python-miio` y las obligaciones de redistribución.
+The project explicitly uses GPL-3.0-only. Do not replace it with a permissive license without first reviewing its interaction with `python-miio` and redistribution obligations.

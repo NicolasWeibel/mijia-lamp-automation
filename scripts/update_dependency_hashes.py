@@ -31,21 +31,21 @@ def wheel_identity(path: Path) -> tuple[str, str]:
     with zipfile.ZipFile(path) as archive:
         metadata_files = [name for name in archive.namelist() if name.endswith(".dist-info/METADATA")]
         if len(metadata_files) != 1:
-            raise ValueError(f"Wheel sin metadata única: {path.name}")
+            raise ValueError(f"Wheel does not have exactly one metadata file: {path.name}")
         metadata = BytesParser().parsebytes(archive.read(metadata_files[0]), headersonly=True)
     name, version = metadata.get("Name"), metadata.get("Version")
     if not name or not version:
-        raise ValueError(f"Wheel sin nombre o versión: {path.name}")
+        raise ValueError(f"Wheel is missing its name or version: {path.name}")
     return canonical_name(name), version
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("wheel_dir", type=Path, help="Directorio de wheels Windows revisados")
+    parser.add_argument("wheel_dir", type=Path, help="Directory of reviewed Windows wheels")
     args = parser.parse_args()
     wheels = sorted(args.wheel_dir.glob("*.whl"))
     if not wheels:
-        parser.error("No hay wheels en el directorio")
+        parser.error("No wheels found in the directory")
 
     hashes: dict[tuple[str, str], list[str]] = defaultdict(list)
     for wheel in wheels:
@@ -68,24 +68,24 @@ def main() -> int:
                 continue
             match = PIN_RE.fullmatch(line)
             if not match:
-                raise ValueError(f"Pin inválido en {lock.name}: {line}")
+                raise ValueError(f"Invalid pin in {lock.name}: {line}")
             name, version = match.groups()
             identity = canonical_name(name), version
             if identity in expected:
-                raise ValueError(f"Pin duplicado: {name}=={version}")
+                raise ValueError(f"Duplicate pin: {name}=={version}")
             expected.add(identity)
             if identity not in hashes:
-                raise ValueError(f"Falta wheel para {name}=={version}")
+                raise ValueError(f"Missing wheel for {name}=={version}")
             suffix = " ".join(f"--hash=sha256:{digest}" for digest in sorted(set(hashes[identity])))
             output.append(f"{name}=={version} {suffix}")
         updates[lock] = "\n".join(output).rstrip() + "\n"
 
     unexpected = set(hashes) - expected
     if unexpected:
-        raise ValueError(f"Wheels ajenos a los locks: {sorted(unexpected)}")
+        raise ValueError(f"Wheels not present in the locks: {sorted(unexpected)}")
     for lock, content in updates.items():
         lock.write_text(content, encoding="utf-8", newline="\n")
-    print(f"Hashes SHA-256 actualizados: {len(expected)} paquetes, {len(wheels)} wheels")
+    print(f"Updated SHA-256 hashes: {len(expected)} packages, {len(wheels)} wheels")
     return 0
 
 

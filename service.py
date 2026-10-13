@@ -4,6 +4,8 @@ import contextlib
 import os
 import sys
 
+from mijialamp.i18n import tr
+
 SERVICE_NAME = "MijiaLampService"
 
 if os.name == "nt":
@@ -13,6 +15,7 @@ if os.name == "nt":
     import win32serviceutil
 
     from mijialamp.config import load_config
+    from mijialamp.console_display import ConsoleDisplayMonitor
     from mijialamp.controller import LampController
     from mijialamp.ipc import PipeServer
     from mijialamp.logging_setup import configure_logging
@@ -35,6 +38,7 @@ if os.name == "nt":
             self.core = None
             self.pipe = None
             self.log = None
+            self.console_display = None
 
         def GetAcceptedControls(self):
             controls = super().GetAcceptedControls()
@@ -45,6 +49,8 @@ if os.name == "nt":
 
         def SvcStop(self):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+            if self.console_display:
+                self.console_display.stop()
             if self.pipe:
                 self.pipe.stop()
             if self.core:
@@ -106,6 +112,18 @@ if os.name == "nt":
                     logger=self.log,
                 )
                 self.core.start()
+                if cfg.get("service_prelogin_display", False):
+                    self.console_display = ConsoleDisplayMonitor(
+                        lambda on: self.core.dispatch(
+                            {"command": "display", "on": on, "event": "service-console-display"}
+                        ),
+                        self.log,
+                    )
+                    try:
+                        self.console_display.start()
+                    except OSError as exc:
+                        self.log.warning("Pre-login display monitoring unavailable: %s", exc)
+                        self.console_display = None
                 self.log.info("MijiaLampService started")
                 self.ReportServiceStatus(win32service.SERVICE_RUNNING)
                 self.pipe.serve_forever()
@@ -115,6 +133,8 @@ if os.name == "nt":
                 if self.log:
                     self.log.error("Service fatal error: %s", exc, exc_info=True)
             finally:
+                if self.console_display:
+                    self.console_display.stop()
                 if self.core:
                     self.core.stop()
                 if self.log:
@@ -123,7 +143,7 @@ if os.name == "nt":
 
 def main() -> int:
     if os.name != "nt":
-        print("MijiaLampService sólo puede ejecutarse/instalarse en Windows.", file=sys.stderr)
+        print(tr("msg_b02ea2677c79"), file=sys.stderr)
         return 2
     if len(sys.argv) == 1:
         servicemanager.Initialize()

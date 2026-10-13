@@ -251,8 +251,71 @@ class ControllerRaceTests(unittest.TestCase):
             until = controller.pause(120)
             self.assertGreater(until, 0)
             self.assertGreater(controller.state.read()["automation_paused_until"], 0)
+            controller.set_automation_enabled(False)
             controller.resume_automation()
-            self.assertEqual(controller.state.read()["automation_paused_until"], 0)
+            state = controller.state.read()
+            self.assertEqual(state["automation_paused_until"], 0)
+            self.assertTrue(state["automation_enabled"])
+
+    def test_return_to_automatic_cancels_manual_off_and_late_reassert(self):
+        with tempfile.TemporaryDirectory() as td:
+            transport = FakeTransport(LampPhysicalState("on", 35, 3000, "192.168.1.100"))
+            controller = self.make_controller(td, transport)
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.threading.Thread.start"),
+                self.evening_profile(),
+            ):
+                controller.manual_off()
+                critical = controller.state.read()["critical_off_revision"]
+                controller.pause(3600)
+                controller.set_automation_enabled(False)
+                controller.resume_automation()
+                state = controller.state.read()
+                self.assertTrue(state["automation_enabled"])
+                self.assertFalse(state["manual_off_active"])
+                self.assertEqual(state["manual_off_until"], 0)
+                self.assertEqual(state["automation_paused_until"], 0)
+                result = controller.sync("resume-automation", force=True)
+                self.assertEqual(result["desired"].power, "on")
+                count = len(transport.commands)
+                controller.reassert_critical_off("manual-off", critical)
+                self.assertEqual(len(transport.commands), count)
+                self.assertEqual(transport.physical.power, "on")
+
+    def test_return_to_automatic_cancels_daytime_manual_on(self):
+        with tempfile.TemporaryDirectory() as td:
+            transport = FakeTransport()
+            controller = self.make_controller(td, transport)
+            with (
+                patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                patch("mijialamp.controller.is_night_now", return_value=False),
+                patch("mijialamp.policy.is_night_now", return_value=False),
+            ):
+                controller.manual_on()
+                controller.resume_automation()
+                state = controller.state.read()
+                self.assertFalse(state["manual_day_active"])
+                self.assertEqual(state["manual_day_started_at"], 0)
+                result = controller.sync("resume-automation", force=True)
+                self.assertEqual(result["desired"].power, "off")
+                self.assertEqual(transport.physical.power, "off")
+
+    def test_pause_holds_current_light_without_sending_power_commands(self):
+        with tempfile.TemporaryDirectory() as td:
+            for power in ("on", "off"):
+                with self.subTest(power=power):
+                    transport = FakeTransport(LampPhysicalState(power, 35, 3000, "192.168.1.100"))
+                    controller = self.make_controller(td, transport)
+                    with (
+                        self.evening_profile(),
+                        patch("mijialamp.controller.CONTROL_LOCK_PATH", Path(td) / "control.lock"),
+                    ):
+                        controller.pause(3600)
+                        result = controller.sync("paused")
+                    self.assertEqual(result["desired"].power, "hold")
+                    self.assertEqual(transport.commands, [])
+                    self.assertEqual(transport.physical.power, power)
 
     def test_windows_state_setters_bump_revision(self):
         with tempfile.TemporaryDirectory() as td:

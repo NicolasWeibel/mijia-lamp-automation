@@ -17,11 +17,10 @@ FORBIDDEN_ROOT_PATHS = (
     ROOT / "secrets",
     ROOT / "data",
     ROOT / "logs",
-    ROOT / "prepared-runtime",
-    ROOT / "wheelhouse",
 )
 REQUIRED_PUBLIC_FILES = (
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
     "config.example.json",
     "config.schema.json",
@@ -30,6 +29,15 @@ REQUIRED_PUBLIC_FILES = (
     "agent.py",
     "portable.py",
     "setup-portable.ps1",
+    "setup-gui.cmd",
+    "setup-gui.vbs",
+    "setup-gui.ps1",
+    "onboarding-gui.ps1",
+    "config-gui.ps1",
+    "i18n.ps1",
+    "README.es.md",
+    "mijialamp/locales/en.json",
+    "mijialamp/locales/es.json",
     "prepare-service-runtime.ps1",
     "security-check.ps1",
     "SECURITY.md",
@@ -57,7 +65,7 @@ def _project_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     match = PROJECT_VERSION_RE.search(text)
     if not match:
-        fail("pyproject.toml no contiene project.version legible")
+        fail("pyproject.toml does not contain a readable project.version")
     return match.group(1)
 
 
@@ -65,7 +73,7 @@ def _package_version() -> str:
     text = (ROOT / "mijialamp" / "__init__.py").read_text(encoding="utf-8")
     match = PACKAGE_VERSION_RE.search(text)
     if not match:
-        fail("mijialamp/__init__.py no contiene __version__ legible")
+        fail("mijialamp/__init__.py does not contain a readable __version__")
     return match.group(1)
 
 
@@ -92,7 +100,7 @@ def check_hygiene() -> None:
         fail(f"release tag {git_ref!r} does not match project version v{project_version}")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     if f"## [{project_version}]" not in changelog:
-        fail(f"CHANGELOG.md no contiene una entrada para {project_version}")
+        fail(f"CHANGELOG.md does not contain an entry for {project_version}")
 
     example = ROOT / "config.example.json"
     with example.open("r", encoding="utf-8") as fh:
@@ -119,7 +127,15 @@ def check_hygiene() -> None:
         fail("config.example.json keys missing from schema: " + ", ".join(missing_schema))
 
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    for required in ("config.json", "secrets/", "data/", "logs/", "mi-tokens.json", "prepared-runtime/"):
+    for required in (
+        "config.json",
+        "secrets/",
+        "data/",
+        "logs/",
+        "mi-tokens.json",
+        "prepared-runtime/",
+        "wheelhouse/",
+    ):
         if required not in gitignore:
             fail(f".gitignore does not protect {required}")
 
@@ -128,7 +144,10 @@ def check_hygiene() -> None:
     for path in ROOT.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
-        if any(part in {".venv", ".git", "release", "__pycache__"} for part in path.parts):
+        if any(
+            part in {".venv", ".git", "release", "prepared-runtime", "wheelhouse", "__pycache__"}
+            for part in path.parts
+        ):
             continue
         try:
             text = path.read_text(encoding="utf-8")

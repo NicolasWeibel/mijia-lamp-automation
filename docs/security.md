@@ -1,105 +1,105 @@
-# Seguridad v3.1
+# Security v3.1
 
-## Objetivos
+[English](security.md) | [Español](es/security.md)
 
-1. Evitar secretos plaintext.
-2. Evitar que código modificable por el usuario sea ejecutado por un servicio.
-3. Evitar red/gestores de paquetes durante la fase elevada.
-4. Limitar comunicación IPC a la máquina y usuario esperado.
-5. Mantener una opción Portable que no requiera privilegios.
+
+## Goals
+
+1. Prevent plaintext secrets.
+2. Prevent a service from running code the user can modify.
+3. Avoid network access and package managers during elevation.
+4. Restrict IPC to the expected machine and user.
+5. Keep a Portable option that needs no elevated privileges.
 
 ## Portable
 
-El token se cifra con DPAPI `CurrentUser`. `portable.py`, controller y miIO viven en la misma sesión de usuario. El Pipe Portable usa un nombre diferente al del servicio y DACL ligada al SID actual.
+The wizard's QR authorization runs as a standard user and only during setup. It queries `account.xiaomi.com`, `ak.account.xiaomi.com`, `sgp.lp.account.xiaomi.com`, `sts.api.io.mi.com`, and Xiaomi regional APIs over HTTPS. The account session stays in memory and is not written to disk. The device list and tokens travel only through a local pipe from the onboarding process to its UI; only the selected device token is saved as a DPAPI blob in the private `%LOCALAPPDATA%\MijiaLamp\onboarding-private` directory. The Import token step rewraps it for Portable or Service and removes the temporary blob after success. The Xiaomi password, token, and session are not placed in process arguments or logs. The elevated Service phase makes no network requests.
 
-Portable no pretende sobrevivir al cierre de sesión ni ofrecer Preshutdown SCM. A cambio elimina la frontera de privilegios y no requiere instalación administrativa.
+The QR integration uses Xiaomi endpoints whose future compatibility is not guaranteed. If they fail, the user can import a selected `mi-tokens.json` file. Lamp control continues to use only the LAN.
+
+The token is encrypted with DPAPI `CurrentUser`. `portable.py`, the controller, and miIO run in the same user session. The Portable Pipe has a different name from the service pipe and a DACL tied to the current SID.
+
+Portable does not aim to survive sign-out or provide SCM Preshutdown. In return, it removes the privilege boundary and needs no administrative installation.
 
 ## Hardened Service
 
-### Runtime privado
+### Private runtime
 
-El servicio **no usa** un Python instalado en `%LOCALAPPDATA%` u otra ubicación modificable por el usuario. `prepare-service-runtime.ps1` copia la instalación base, descarta `Lib/site-packages` y `Scripts`, instala exclusivamente el conjunto fijado y prueba la reubicación.
+The service does **not** use Python installed under `%LOCALAPPDATA%` or another location the user can modify. `prepare-service-runtime.ps1` copies the base installation, discards `Lib/site-packages` and `Scripts`, installs only the pinned set, and tests relocation.
 
-La preparación local de dependencias acepta sólo wheels binarios, para evitar ejecutar builds de paquetes fuente. Los 30 paquetes están fijados por versión y los locks incluyen hashes SHA-256 de los wheels para Windows x64 y Python 3.10–3.12. `pip --require-hashes` comprueba esos hashes tanto al descargarlos como al instalarlos sin conexión. Un wheel con bytes distintos se rechaza; al actualizar una dependencia hay que revisar el nuevo wheel y actualizar su hash de forma explícita.
+Local dependency preparation accepts binary wheels only, to avoid running source package builds. The 30 packages are pinned by version, and the locks include SHA-256 hashes for wheels for Windows x64 and Python 3.10–3.12. `pip --require-hashes` checks those hashes both when downloading and installing offline. A wheel with different bytes is rejected; updating a dependency requires reviewing its new wheel and explicitly updating its hash.
 
-Este control verifica que se instalen los bytes aprobados en el repositorio; no demuestra que esos bytes estén libres de malware ni protege frente a cambios maliciosos en el propio repositorio, Python base o el equipo de build. Otras arquitecturas no están cubiertas por estos hashes en la preparación local.
+This control verifies that the repository-approved bytes are installed; it does not prove those bytes are malware-free or protect against malicious changes to the repository, base Python, or build machine. Other architectures are not covered by these hashes during local preparation.
 
-El runtime resultante se hash-ea archivo por archivo. El instalador Admin verifica que:
+The resulting runtime is hashed file by file. The elevated installer verifies that no files are missing or unmanifested, every SHA-256 matches, no prepared artifact is a reparse point, and the hashes still match **after copying to staging**, closing the TOCTOU window between verification and copying.
 
-- no falten archivos;
-- no haya archivos adicionales no manifestados;
-- cada SHA-256 coincida;
-- no existan reparse points en los artefactos preparados;
-- los mismos hashes vuelvan a coincidir **después de copiarlos al staging**, cerrando la ventana TOCTOU entre verificación y copia.
+After installation, `integrity-manifest.json` records immutable files and `security-check.ps1` verifies their hashes again.
 
-Tras instalar, `integrity-manifest.json` registra los archivos inmutables y `security-check.ps1` vuelve a verificar sus hashes.
+The staging directory is created with a protected ACL that allows only Administrators and SYSTEM. Before running the prepared Python, the installer checks the owner and ACEs, rejects old directories containing reparse points, and stops if `icacls` fails. The backup destination is validated before the old service is stopped.
 
-El directorio de staging nace con una ACL protegida que permite acceso sólo a Administradores y SYSTEM. El instalador verifica propietario y ACE antes de ejecutar el Python preparado, rechaza directorios anteriores con reparse points y detiene la instalación si `icacls` falla. El destino de backups se valida antes de detener el servicio anterior.
+The installer requires `install.ps1` in the source manifest and, after copying, rejects any code or script in staging that is not listed. CI tests this by adding a root script at the last moment.
 
-El instalador exige que `install.ps1` esté incluido en el manifiesto de source y, después de copiar, rechaza cualquier archivo de código o script en staging que no figure en ese manifiesto. La prueba de CI incluye un script de raíz agregado a último momento para comprobar el rechazo.
+Service mode accepts only the official `ProgramData\MijiaLamp` folder. Installing under a parent the user can modify would break staging isolation; uninstall also restricts the path to avoid accidental deletion with `-DeleteFiles`.
 
-El modo Service sólo acepta la carpeta oficial `ProgramData\MijiaLamp`. Instalar bajo una carpeta cuyo padre pueda modificar el usuario rompería el aislamiento del staging; la desinstalación limita la ruta por el mismo motivo y para evitar borrados accidentales al usar `-DeleteFiles`.
+If installation fails after stopping the previous version, rollback preserves its files without running its Python or `service.py` as Administrator. It does not restart Service or Agent: check their state, inspect the files, and repeat installation from a verified release. `uninstall.ps1` removes the service through the Windows service manager and also avoids running the installed runtime with elevated privileges.
 
-Si la instalación falla después de detener la versión anterior, el rollback conserva sus archivos sin ejecutar su Python ni `service.py` como Administrador. No reinicia el Service ni el Agent: hay que comprobar su estado, revisar los archivos y repetir la instalación desde una release verificada. `uninstall.ps1` elimina el servicio mediante el administrador de servicios de Windows y tampoco ejecuta el runtime instalado con privilegios elevados.
+The runtime is copied to `C:\ProgramData\MijiaLamp\runtime`, where the user has only `Read & Execute` access.
 
-Luego se copia a `C:\ProgramData\MijiaLamp\runtime`, donde el usuario sólo recibe `Read & Execute`.
+### Elevation without a package manager
 
-### Elevación sin package manager
+`install.ps1` contains no `pip install`, `pip download`, `Invoke-WebRequest`, or `Invoke-RestMethod`. All package resolution and installation happen before elevation.
 
-`install.ps1` no contiene `pip install`, `pip download`, `Invoke-WebRequest` ni `Invoke-RestMethod`. Toda resolución/instalación de paquetes sucede antes de elevar.
+### Service
 
-### Servicio
-
-- cuenta: `NT AUTHORITY\LocalService`;
-- Service SID habilitado;
-- `RequiredPrivileges`: `SeChangeNotifyPrivilege`;
-- reinicios SCM acotados;
-- Preshutdown configurado;
-- sin listener TCP/HTTP.
+- Account: `NT AUTHORITY\LocalService`.
+- Dedicated Service SID enabled.
+- `RequiredPrivileges`: `SeChangeNotifyPrivilege`.
+- Bounded SCM restarts.
+- Preshutdown configured.
+- No TCP/HTTP listener.
 
 ### ACLs
 
-- raíz/código/runtime: usuario `RX`, Service SID `RX`;
-- `config.json`: usuario `Modify`, servicio `Read`;
-- `data/`: servicio `Modify`, usuario `Read`;
-- `logs/`: ambos `Modify`;
-- `secrets/`: Service SID/SYSTEM/Administradores únicamente.
+- Root/code/runtime: user `RX`, Service SID `RX`.
+- `config.json`: user `Modify`, service `Read`.
+- `data/`: service `Modify`, user `Read`.
+- `logs/`: both `Modify`.
+- `secrets/`: Service SID/SYSTEM/Administrators only.
 
-`security-check.ps1` vuelve a auditar estas invariantes después del install.
+`security-check.ps1` audits these invariants after installation.
 
 ## DPAPI
 
-Los blobs incluyen metadata de scope:
+Blobs include scope metadata:
 
-- `current-user` para Portable;
-- `local-machine` para Service;
-- blobs v2 con `dpapi-local-machine-service-owned` se normalizan como `local-machine`.
+- `current-user` for Portable.
+- `local-machine` for Service.
+- v2 blobs with `dpapi-local-machine-service-owned` are normalized to `local-machine`.
 
-La entropía DPAPI histórica se mantiene para migrar secretos existentes sin imprimirlos.
+Historical DPAPI entropy is retained to migrate existing secrets without printing them.
 
 ## Named Pipes
 
 - Service: `\\.\pipe\MijiaLamp-v3`
 - Portable: `\\.\pipe\MijiaLamp-Portable-v3`
 
-Ambos usan mensajes JSON acotados y `PIPE_REJECT_REMOTE_CLIENTS`. Service autoriza el SID seleccionado durante instalación **y el Service SID exacto de `MijiaLampService`**; no concede acceso genérico a toda la cuenta `LocalService`. Portable usa el SID del proceso actual.
+Both use bounded JSON messages and `PIPE_REJECT_REMOTE_CLIENTS`. Service authorizes the SID selected during installation **and the exact Service SID for `MijiaLampService`**; it does not grant access to the entire `LocalService` account. Portable uses the current process SID.
 
-## Carreras y OFF crítico
+## Races and critical OFF
 
-La seguridad funcional también importa: `intent_revision` cancela decisiones antiguas y `critical_off_revision` da prioridad a Suspend/Shutdown/Manual OFF. Resume incrementa la revisión sin inventar presencia, y los hints de Suspend tienen deadline para impedir OFF tardíos. Un sync que quedó esperando red no puede enviar un ON después de una intención más reciente.
+Functional safety matters too: `intent_revision` cancels stale decisions and `critical_off_revision` prioritizes Suspend/Shutdown/Manual OFF. Resume increments the revision without inventing presence, and Suspend hints have a deadline to prevent late OFF commands. A sync waiting on the network cannot send ON after a newer intent.
 
+## Release provenance
 
-## Provenance de releases
+The hash manifest protects integrity between preparation and installation, but does not establish the publisher's cryptographic identity. The release workflow is configured to create Windows ZIPs with SHA-256, an SBOM, and GitHub Artifact Attestations. Once the repository is published, prefer these prepared artifacts for Service mode over building the runtime locally. Without Authenticode, an administrator must verify ZIP provenance before elevation.
 
-El hash manifest protege integridad entre preparación e instalación, pero no sustituye una identidad criptográfica del publicador. El workflow de publicación está configurado para generar en Windows ZIPs con SHA-256, SBOM y GitHub Artifact Attestations. Una vez publicado el repositorio, para el modo Service preferí esos artefactos ya preparados frente a construir el runtime localmente. Sin Authenticode, un administrador debe verificar la procedencia del ZIP antes de elevar.
+For an already published official release:
 
-Procedimiento para una release oficial ya publicada:
+1. Download the Service ZIP from the Releases page of the repository you trust. Keep the ZIP unchanged.
+2. Verify its provenance with `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation`, replacing `VERSION` with the downloaded version. Verification must succeed before extraction or elevation.
+3. Extract the ZIP and run `install.ps1` from an elevated PowerShell session. The installer checks runtime and source hashes before and after copying; it uses neither the Internet nor `pip`.
+4. After installation, run `security-check.ps1` and `lampctl.py doctor` before enabling automation.
 
-1. Descargá el ZIP Service desde la página Releases del repositorio que elegiste confiar. Conservá el ZIP sin modificar.
-2. Verificá su procedencia con `gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lamp-automation`, reemplazando `VERSION` por la versión descargada. La verificación debe terminar correctamente antes de extraer o elevar permisos.
-3. Extraé el ZIP y ejecutá `install.ps1` desde una PowerShell elevada. El instalador comprueba hashes del runtime y código fuente antes y después de copiar; no usa Internet ni `pip`.
-4. Tras la instalación, ejecutá `security-check.ps1` y `lampctl.py doctor` antes de habilitar la automatización.
+The attestation shows which repository and workflow produced those bytes; it does not prove that the code, dependencies, or runner are free of malware. A local build uses the Python and packages on your machine and provides less provenance assurance. A `.sha256` delivered with a ZIP only protects against accidental corruption unless authenticated through another channel.
 
-La attestation demuestra qué repositorio y workflow produjeron esos bytes; no prueba ausencia de malware en el código, las dependencias o el runner. Un build local usa el Python y los paquetes disponibles en tu equipo y ofrece menos garantías de procedencia. Un `.sha256` entregado junto al ZIP sólo sirve para integridad accidental si no está autenticado por otro canal.
-
-Después de modificar el código, publicá una versión nueva. Una attestation de una versión anterior no autentica la copia modificada, aunque conserve el mismo nombre de carpeta.
+After changing code, publish a new version. An attestation for an older version does not authenticate a modified copy, even if its folder name stays the same.

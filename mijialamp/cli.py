@@ -6,6 +6,8 @@ import json
 import os
 import sys
 
+from mijialamp.i18n import tr
+
 from .config import load_config
 from .errors import ConfigError, SecretError
 from .ipc import PORTABLE_PIPE_NAME, IPCError, PipeClient
@@ -31,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=("service", "portable"),
         default="service",
-        help="runtime destino: servicio instalado o proceso portable",
+        help=tr("msg_e5b411590b1f"),
     )
     sub = parser.add_subparsers(dest="command", required=True)
     for name in (
@@ -55,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync = sub.add_parser("sync")
     sync.add_argument("--force", action="store_true")
     status = sub.choices["status"]
-    status.add_argument("--no-physical", action="store_true")
+    status.add_argument(tr("msg_73cfb378d8f9"), action="store_true")
     pause = sub.add_parser("pause")
     pause.add_argument("--minutes", type=float, default=60)
     sub.add_parser("pause-until-tomorrow")
@@ -85,15 +87,14 @@ def main(argv=None) -> int:
     if args.command == "token-set":
         if not portable and not _secret_write_allowed():
             print(
-                "TOKEN ERROR: token-set en modo service requiere PowerShell como Administrador; "
-                "preferí import-token.ps1.",
+                tr("msg_c577058f8a98"),
                 file=sys.stderr,
             )
             return EXIT_SECRET
         try:
             store_token(sys.stdin.read().strip(), scope=secret_scope)
             scope_label = "CurrentUser" if portable else "LocalMachine"
-            print(f"Token almacenado con DPAPI {scope_label}. El valor no se muestra.")
+            print(tr("msg_4d5475d860f6", scope_label))
             return EXIT_OK
         except (SecretError, OSError) as exc:
             print(f"TOKEN ERROR: {exc}", file=sys.stderr)
@@ -115,7 +116,7 @@ def main(argv=None) -> int:
             configured = bool(result.get("configured", False)) if isinstance(result, dict) else False
             scope = result.get("scope") if isinstance(result, dict) else None
             suffix = f" ({scope})" if scope else ""
-            print(("Token DPAPI: configurado" + suffix) if configured else "Token DPAPI: NO configurado")
+            print((tr("msg_82be6efa5d23") + suffix) if configured else tr("msg_c7a73d679cca"))
             return EXIT_OK if configured else EXIT_SECRET
         except IPCError as exc:
             # Portable token import/status is useful before starting portable.py. In that
@@ -125,7 +126,7 @@ def main(argv=None) -> int:
                     scope = token_metadata().get("scope")
                 except SecretError:
                     scope = secret_scope
-                print(f"Token DPAPI: configurado ({scope}); runtime portable no iniciado")
+                print(tr("msg_9117ae119601", scope))
                 return EXIT_OK
             print(f"{runtime_label} ERROR: {exc}", file=sys.stderr)
             return EXIT_COMM

@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from mijialamp.i18n import localize_config, tr
+
 from .errors import ConfigError
 from .locking import FileLock
 from .paths import CONFIG_PATH, DEVICE_CACHE_LOCK_PATH, DEVICE_CACHE_PATH
@@ -19,6 +21,7 @@ _MAC_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
 
 DEFAULTS: dict = {
     "version": 3,
+    "ui_language": "en",
     "expected_mac": "",
     "night_mode": True,
     "night_start": "sunset",
@@ -46,6 +49,7 @@ DEFAULTS: dict = {
     "respect_user_presence": True,
     "off_when_user_inactive": False,
     "ignore_remote_sessions": True,
+    "service_prelogin_display": False,
     "network_wait_seconds_on": 20,
     "network_wait_seconds_off": 3,
     "network_wait_seconds_periodic": 3,
@@ -95,36 +99,36 @@ _KNOWN_CONFIG_KEYS = set(DEFAULTS) | {
 def _strict_bool(cfg: dict, key: str) -> bool:
     value = cfg.get(key)
     if type(value) is not bool:  # noqa: E721 - intentionally reject 0/1 and strings
-        raise ConfigError(f"{key} debe ser true o false (booleano JSON real)")
+        raise ConfigError(tr("msg_7ebe6bfdb5f0", key))
     return value
 
 
 def _number(cfg: dict, key: str, *, minimum: float | None = None, maximum: float | None = None) -> float:
     value = cfg.get(key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ConfigError(f"{key} debe ser numérico")
+        raise ConfigError(tr("msg_460ea7865b37", key))
     num = float(value)
     if minimum is not None and num < minimum:
-        raise ConfigError(f"{key} debe ser >= {minimum}")
+        raise ConfigError(tr("msg_c04e30672110", key, minimum))
     if maximum is not None and num > maximum:
-        raise ConfigError(f"{key} debe ser <= {maximum}")
+        raise ConfigError(tr("msg_6692999d5679", key, maximum))
     return num
 
 
 def _integer(cfg: dict, key: str, *, minimum: int | None = None, maximum: int | None = None) -> int:
     value = cfg.get(key)
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ConfigError(f"{key} debe ser un entero")
+        raise ConfigError(tr("msg_d49a527a2b36", key))
     if minimum is not None and value < minimum:
-        raise ConfigError(f"{key} debe ser >= {minimum}")
+        raise ConfigError(tr("msg_c04e30672110", key, minimum))
     if maximum is not None and value > maximum:
-        raise ConfigError(f"{key} debe ser <= {maximum}")
+        raise ConfigError(tr("msg_6692999d5679", key, maximum))
     return value
 
 
 def _hhmm(value: str, key: str) -> str:
     if not isinstance(value, str):
-        raise ConfigError(f"{key} debe ser texto HH:MM")
+        raise ConfigError(tr("msg_a7a93ee17cc3", key))
     try:
         hour_s, minute_s = value.strip().split(":", 1)
         hour, minute = int(hour_s), int(minute_s)
@@ -132,7 +136,7 @@ def _hhmm(value: str, key: str) -> str:
             raise ValueError
         return f"{hour:02d}:{minute:02d}"
     except Exception as exc:
-        raise ConfigError(f"{key} debe tener formato HH:MM") from exc
+        raise ConfigError(tr("msg_ed55322b6d6b", key)) from exc
 
 
 def _normalize_mac(value: str) -> str:
@@ -140,7 +144,7 @@ def _normalize_mac(value: str) -> str:
     if not value:
         return ""
     if not _MAC_RE.fullmatch(value):
-        raise ConfigError("expected_mac debe tener formato AA:BB:CC:DD:EE:FF")
+        raise ConfigError(tr("msg_63aec1c87a98"))
     return value.replace("-", ":").upper()
 
 
@@ -153,23 +157,25 @@ def _apply_defaults(cfg: dict) -> dict:
     return merged
 
 
+@localize_config
 def validate_config(cfg: dict) -> dict:
     if not isinstance(cfg, dict):
-        raise ConfigError("config.json debe contener un objeto JSON")
+        raise ConfigError(tr("msg_d476dab29bb2"))
 
     raw_version = cfg.get("version")
     if isinstance(raw_version, bool) or not isinstance(raw_version, int) or raw_version != 3:
-        raise ConfigError("version debe ser exactamente 3; ejecutá el migrador/instalador v3")
+        raise ConfigError(tr("msg_322c5bb95cb6"))
 
     unknown = sorted(set(cfg) - _KNOWN_CONFIG_KEYS)
     if unknown:
         raise ConfigError(
-            "Claves desconocidas en config.json: "
-            + ", ".join(unknown)
-            + ". Corregí posibles typos o ejecutá la migración v3."
+            "Claves desconocidas en config.json: " + ", ".join(unknown) + tr("msg_e7ffb06e2201")
         )
 
     cfg = _apply_defaults(cfg)
+
+    if not isinstance(cfg["ui_language"], str) or cfg["ui_language"] not in {"en", "es"}:
+        raise ConfigError(tr("language.invalid"))
 
     try:
         ip = ipaddress.ip_address(str(cfg["lamp_ip"]))
@@ -177,16 +183,16 @@ def validate_config(cfg: dict) -> dict:
             raise ValueError
         cfg["lamp_ip"] = str(ip)
     except Exception as exc:
-        raise ConfigError("lamp_ip debe ser una IPv4 unicast válida") from exc
+        raise ConfigError(tr("msg_f051f5dbec53")) from exc
 
     cfg["expected_mac"] = _normalize_mac(str(cfg.get("expected_mac", "")))
 
     schema_hint = cfg.get("$schema")
     if schema_hint is not None and not isinstance(schema_hint, str):
-        raise ConfigError("$schema debe ser texto")
+        raise ConfigError(tr("msg_16aad03ee2d9"))
     location_name = cfg.get("location_name", "")
     if not isinstance(location_name, str):
-        raise ConfigError("location_name debe ser texto")
+        raise ConfigError(tr("msg_9ac00b22f8b8"))
 
     model = str(cfg.get("expected_model", "")).strip()
     if not model:
@@ -195,13 +201,13 @@ def validate_config(cfg: dict) -> dict:
 
     did = str(cfg.get("device_id", "")).strip()
     if not did.isdigit() or int(did) <= 0:
-        raise ConfigError("device_id debe ser un entero decimal positivo")
+        raise ConfigError(tr("msg_33e066127e5b"))
     cfg["device_id"] = did
 
     try:
         ZoneInfo(str(cfg["timezone"]))
     except Exception as exc:
-        raise ConfigError("timezone no es válida") from exc
+        raise ConfigError(tr("msg_e0e7d4cb9194")) from exc
 
     lat = _number(cfg, "latitude", minimum=-90, maximum=90)
     lon = _number(cfg, "longitude", minimum=-180, maximum=180)
@@ -216,6 +222,7 @@ def validate_config(cfg: dict) -> dict:
         "respect_user_presence",
         "off_when_user_inactive",
         "ignore_remote_sessions",
+        "service_prelogin_display",
         "discovery_enabled",
         "discovery_neighbor_enabled",
         "discovery_scan_enabled",
@@ -228,7 +235,7 @@ def validate_config(cfg: dict) -> dict:
     for key in ("night_start", "night_end"):
         value = str(cfg.get(key, "")).lower()
         if value not in _SOLAR_KEYS:
-            raise ConfigError(f"{key} debe ser uno de: {', '.join(sorted(_SOLAR_KEYS))}")
+            raise ConfigError(tr("msg_496f08fe73fe", key, ", ".join(sorted(_SOLAR_KEYS))))
         cfg[key] = value
 
     _integer(cfg, "night_start_offset_minutes", minimum=-360, maximum=360)
@@ -239,24 +246,24 @@ def validate_config(cfg: dict) -> dict:
 
     profiles = cfg.get("light_profiles")
     if not isinstance(profiles, dict):
-        raise ConfigError("light_profiles debe ser un objeto")
+        raise ConfigError(tr("msg_e7005bf956bc"))
     for name in _REQUIRED_PROFILES:
         profile = profiles.get(name)
         if not isinstance(profile, dict):
-            raise ConfigError(f"Falta light_profiles.{name}")
+            raise ConfigError(tr("msg_c8cf8e41f6ee", name))
         kelvin = profile.get("kelvin")
         brightness = profile.get("brightness")
         if isinstance(kelvin, bool) or not isinstance(kelvin, int) or not 2700 <= kelvin <= 6500:
-            raise ConfigError(f"{name}.kelvin debe ser un entero entre 2700 y 6500")
+            raise ConfigError(tr("msg_b74158ec2395", name))
         if isinstance(brightness, bool) or not isinstance(brightness, int) or not 1 <= brightness <= 100:
-            raise ConfigError(f"{name}.brightness debe ser un entero entre 1 y 100")
+            raise ConfigError(tr("msg_480d864726d2", name))
 
     if cfg["profile_transition_mode"] not in {"stepped", "continuous"}:
-        raise ConfigError("profile_transition_mode debe ser 'stepped' o 'continuous'")
+        raise ConfigError(tr("msg_05cb41dd106f"))
     if cfg["unknown_display_policy"] not in {"off", "hold", "assume_on"}:
-        raise ConfigError("unknown_display_policy debe ser off, hold o assume_on")
+        raise ConfigError(tr("msg_cff946964507"))
     if cfg["external_change_policy"] not in {"enforce", "respect_for_minutes", "respect_until_next_profile"}:
-        raise ConfigError("external_change_policy inválida")
+        raise ConfigError(tr("msg_72f8e6632ce2"))
 
     number_ranges = {
         "manual_day_override_max_hours": (0, 72),
@@ -301,7 +308,7 @@ def validate_config(cfg: dict) -> dict:
 
     prefix = _integer(cfg, "discovery_scan_prefix", minimum=24, maximum=24)
     if prefix != 24:
-        raise ConfigError("Por seguridad sólo se permite discovery_scan_prefix=24")
+        raise ConfigError(tr("msg_9f9b2cd99b73"))
 
     return cfg
 
@@ -361,25 +368,26 @@ def _read_cached_ip() -> str | None:
         return None
 
 
-def load_config(path: Path = CONFIG_PATH) -> dict:
+def load_config(path: Path = CONFIG_PATH, *, include_device_cache: bool = True) -> dict:
     try:
         with open(path, encoding="utf-8-sig") as fh:
             cfg = json.load(fh)
     except FileNotFoundError as exc:
         raise ConfigError(f"No existe {path}") from exc
     except json.JSONDecodeError as exc:
-        raise ConfigError(f"JSON inválido en {path}: {exc}") from exc
+        raise ConfigError(tr("msg_7058f79a3e7b", path, exc)) from exc
     cfg = validate_config(cfg)
-    cached_ip = _read_cached_ip()
-    if cached_ip:
-        cfg["lamp_ip"] = cached_ip
+    if include_device_cache:
+        cached_ip = _read_cached_ip()
+        if cached_ip:
+            cfg["lamp_ip"] = cached_ip
     return cfg
 
 
 def update_lamp_ip(new_ip: str) -> bool:
     ip_obj = ipaddress.ip_address(new_ip)
     if not isinstance(ip_obj, ipaddress.IPv4Address):
-        raise ConfigError("La IP descubierta debe ser IPv4")
+        raise ConfigError(tr("msg_d001d546d47a"))
     ip = str(ip_obj)
     previous = read_device_cache().get("lamp_ip")
     if previous == ip:

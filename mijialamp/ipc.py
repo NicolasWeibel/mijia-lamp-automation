@@ -6,6 +6,8 @@ import os
 import threading
 from collections.abc import Callable
 
+from mijialamp.i18n import tr
+
 from .errors import MijiaLampError
 
 PIPE_NAME = r"\\.\pipe\MijiaLamp-v3"
@@ -28,12 +30,12 @@ def build_pipe_sddl(authorized_user_sid: str, server_sid: str | None = None) -> 
     """
     user_sid = str(authorized_user_sid).strip()
     if not user_sid.upper().startswith("S-1-"):
-        raise IPCError("SID autorizado inválido")
+        raise IPCError(tr("msg_7a5c3a2a89ca"))
     aces = ["(A;;GA;;;SY)", "(A;;GA;;;BA)"]
     if server_sid is not None:
         service_sid = str(server_sid).strip()
         if not service_sid.upper().startswith("S-1-"):
-            raise IPCError("Service SID inválido")
+            raise IPCError(tr("msg_250d3dd2fb4b"))
         aces.append(f"(A;;GA;;;{service_sid})")
     aces.append(f"(A;;GRGW;;;{user_sid})")
     return "D:P" + "".join(aces)
@@ -42,7 +44,7 @@ def build_pipe_sddl(authorized_user_sid: str, server_sid: str | None = None) -> 
 def encode_message(payload: dict) -> bytes:
     raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
     if len(raw) > _MAX_MESSAGE:
-        raise IPCError("Mensaje IPC demasiado grande")
+        raise IPCError(tr("msg_699852a651cb"))
     return raw
 
 
@@ -50,9 +52,9 @@ def decode_message(raw: bytes) -> dict:
     try:
         data = json.loads(raw.decode("utf-8"))
     except Exception as exc:
-        raise IPCError("Mensaje IPC inválido") from exc
+        raise IPCError(tr("msg_37517e0312ac")) from exc
     if not isinstance(data, dict):
-        raise IPCError("El mensaje IPC debe ser un objeto JSON")
+        raise IPCError(tr("msg_4ee8d0472f5f"))
     return data
 
 
@@ -86,7 +88,7 @@ class PipeClient:
         :meth:`notify`, which writes one small message and never waits for a response.
         """
         if os.name != "nt":
-            raise IPCError("Named Pipes de MijiaLamp sólo están disponibles en Windows")
+            raise IPCError(tr("msg_db7ea619a986"))
         import win32file
 
         try:
@@ -97,7 +99,7 @@ class PipeClient:
             finally:
                 win32file.CloseHandle(handle)
         except Exception as exc:
-            raise IPCError(f"No se pudo comunicar con MijiaLampService: {exc}") from exc
+            raise IPCError(tr("msg_1be797bb1933", exc)) from exc
 
         response = decode_message(raw)
         if not response.get("ok", False):
@@ -112,7 +114,7 @@ class PipeClient:
         the caller can immediately return to Windows' message loop.
         """
         if os.name != "nt":
-            raise IPCError("Named Pipes de MijiaLamp sólo están disponibles en Windows")
+            raise IPCError(tr("msg_db7ea619a986"))
         import win32file
 
         try:
@@ -125,7 +127,7 @@ class PipeClient:
             finally:
                 win32file.CloseHandle(handle)
         except Exception as exc:
-            raise IPCError(f"No se pudo notificar a MijiaLampService: {exc}") from exc
+            raise IPCError(tr("msg_f2925a513a4b", exc)) from exc
 
 
 class PipeServer:
@@ -142,7 +144,7 @@ class PipeServer:
         server_sid: str | None = None,
     ):
         if int(max_clients) < 1:
-            raise IPCError("max_clients debe ser >= 1")
+            raise IPCError(tr("msg_fbe71c429e92"))
         self.handler = handler
         self.authorized_user_sid = authorized_user_sid
         self.pipe_name = pipe_name
@@ -192,7 +194,7 @@ class PipeServer:
                 encode_message(
                     {
                         "ok": False,
-                        "error": "MijiaLampService está ocupado; reintentá en unos segundos",
+                        "error": tr("msg_085e918b2f4f"),
                     }
                 ),
             )
@@ -230,7 +232,7 @@ class PipeServer:
 
     def serve_forever(self) -> None:
         if os.name != "nt":
-            raise IPCError("PipeServer sólo está disponible en Windows")
+            raise IPCError(tr("msg_44b25ee406d4"))
         import win32file
         import win32pipe
 
@@ -241,19 +243,21 @@ class PipeServer:
             | getattr(win32pipe, "PIPE_REJECT_REMOTE_CLIENTS", _PIPE_REJECT_REMOTE_CLIENTS)
         )
         while not self._stop.is_set():
-            handle = win32pipe.CreateNamedPipe(
-                self.pipe_name,
-                win32pipe.PIPE_ACCESS_DUPLEX,
-                mode,
-                win32pipe.PIPE_UNLIMITED_INSTANCES,
-                _MAX_MESSAGE,
-                _MAX_MESSAGE,
-                0,
-                self._security_attributes(),
-            )
-            owned = True
+            handle = None
+            owned = False
             slot_acquired = False
             try:
+                handle = win32pipe.CreateNamedPipe(
+                    self.pipe_name,
+                    win32pipe.PIPE_ACCESS_DUPLEX,
+                    mode,
+                    win32pipe.PIPE_UNLIMITED_INSTANCES,
+                    _MAX_MESSAGE,
+                    _MAX_MESSAGE,
+                    0,
+                    self._security_attributes(),
+                )
+                owned = True
                 try:
                     win32pipe.ConnectNamedPipe(handle, None)
                 except Exception as exc:
@@ -278,6 +282,14 @@ class PipeServer:
                 # Worker owns both the handle and the semaphore slot from here.
                 owned = False
                 slot_acquired = False
+            except Exception as exc:
+                if not self._stop.is_set():
+                    # A client can close between CreateNamedPipe and ConnectNamedPipe
+                    # (ERROR_NO_DATA, 232). A transient pipe failure must not kill
+                    # the listener thread while the rest of the runtime keeps running.
+                    if self.log:
+                        self.log.warning("IPC listener recovered from pipe error: %s", exc)
+                    self._stop.wait(0.05 if getattr(exc, "winerror", None) == 232 else 1.0)
             finally:
                 if slot_acquired:
                     self._slots.release()

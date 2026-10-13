@@ -1,14 +1,16 @@
-param(
+﻿param(
     [string]$InstallDir = "C:\ProgramData\MijiaLamp",
     [string]$InteractiveUser = ""
 )
+. (Join-Path $PSScriptRoot 'i18n.ps1')
+Initialize-MijiaLampLanguage -ConfigPath $ConfigPath
 $ErrorActionPreference = "Stop"
 $ServiceName = "MijiaLampService"
 $Failures = New-Object System.Collections.Generic.List[string]
 
 function Fail([string]$Message) {
     $Failures.Add($Message)
-    Write-Host "[FAIL] $Message" -ForegroundColor Red
+    Write-Host "[FAIL] $Message" -ForegroundColor (T 'msg_ba19e9c3d5f4')
 }
 function Pass([string]$Message) { Write-Host "[ OK ] $Message" -ForegroundColor Green }
 
@@ -46,25 +48,25 @@ function User-HasWriteAce([string]$Path, [string]$Sid) {
 
 Write-Host "== MijiaLamp hardened security check ==" -ForegroundColor Cyan
 $Sid = Resolve-UserSid $InteractiveUser
-if (-not $Sid) { Fail "No pude resolver SID del usuario interactivo" } else { Pass "Usuario interactivo SID=$Sid" }
+if (-not $Sid) { Fail (T 'msg_78466ccee83b') } else { Pass (T 'msg_b659ae05a03a' -Arguments @(($Sid))) }
 
 $svc = Get-CimInstance Win32_Service -Filter "Name='$ServiceName'" -ErrorAction SilentlyContinue
 if (-not $svc) {
-    Fail "$ServiceName no está instalado"
+    Fail (T 'msg_f53bf45a6b6e' -Arguments @(($ServiceName)))
 } else {
     if ($svc.StartName -ieq "NT AUTHORITY\LocalService") { Pass "Servicio usa LocalService" }
     else { Fail "Servicio usa cuenta inesperada: $($svc.StartName)" }
     if ($svc.PathName -and $svc.PathName.ToLowerInvariant().Contains($InstallDir.ToLowerInvariant())) {
-        Pass "Ejecutable del servicio está dentro del árbol protegido"
-    } else { Fail "ImagePath del servicio no apunta al runtime protegido: $($svc.PathName)" }
-    if ($svc.State -eq "Running") { Pass "Servicio en ejecución" } else { Fail "Servicio no está Running ($($svc.State))" }
+        Pass (T 'msg_46726ac23fe5')
+    } else { Fail (T 'msg_de0153d9a088' -Arguments @(($svc.PathName))) }
+    if ($svc.State -eq "Running") { Pass (T 'msg_29198fce68a1') } else { Fail (T 'msg_41ac307315f8' -Arguments @(($svc.State))) }
 
     if ($svc.ProcessId -gt 0) {
         try {
             $listeners = @(Get-NetTCPConnection -State Listen -OwningProcess $svc.ProcessId -ErrorAction SilentlyContinue)
-            if ($listeners.Count -eq 0) { Pass "Servicio no expone listeners TCP" }
-            else { Fail "Servicio tiene listeners TCP inesperados" }
-        } catch { Write-Host "[WARN] No pude consultar listeners TCP." -ForegroundColor Yellow }
+            if ($listeners.Count -eq 0) { Pass (T 'msg_4fb74e808510') }
+            else { Fail (T 'msg_923050c63d4a') }
+        } catch { Write-Host (T 'msg_76a16f31f5cb') -ForegroundColor Yellow }
     }
 }
 
@@ -75,14 +77,14 @@ try {
     if ($normalized.Count -eq 1 -and $normalized[0] -eq "SeChangeNotifyPrivilege") {
         Pass "RequiredPrivileges reducido a SeChangeNotifyPrivilege"
     } else { Fail "RequiredPrivileges inesperados: $($normalized -join ', ')" }
-} catch { Fail "No pude validar RequiredPrivileges" }
+} catch { Fail (T 'msg_8c644e1c9eae') }
 
 foreach ($path in @($InstallDir, (Join-Path $InstallDir "runtime"), (Join-Path $InstallDir "mijialamp"))) {
-    if (User-HasWriteAce $path $Sid) { Fail "Usuario tiene ACE de escritura en código/runtime: $path" }
-    else { Pass "Usuario sin escritura en código/runtime: $path" }
+    if (User-HasWriteAce $path $Sid) { Fail (T 'msg_bcaa8c0ccae0' -Arguments @(($path))) }
+    else { Pass (T 'msg_f0b87aa7db1a' -Arguments @(($path))) }
 }
 $Secrets = Join-Path $InstallDir "secrets"
-if (User-HasWriteAce $Secrets $Sid) { Fail "Usuario tiene escritura en secrets" }
+if (User-HasWriteAce $Secrets $Sid) { Fail (T 'msg_988568dd077e') }
 else {
     $acl = Get-Acl $Secrets
     $hasUserAce = $false
@@ -91,14 +93,14 @@ else {
         catch { continue }
         if ($ruleSid -eq $Sid) { $hasUserAce = $true }
     }
-    if ($hasUserAce) { Fail "Usuario tiene ACE explícita sobre secrets" }
-    else { Pass "secrets no concede acceso al usuario interactivo" }
+    if ($hasUserAce) { Fail (T 'msg_354e3d0c0b54') }
+    else { Pass (T 'msg_2c5d03c0662c') }
 }
 
 
 $IntegrityPath = Join-Path $InstallDir "integrity-manifest.json"
 if (!(Test-Path $IntegrityPath -PathType Leaf)) {
-    Fail "Falta integrity-manifest.json"
+    Fail (T 'msg_8be3864097aa')
 } else {
     try {
         $integrity = Get-Content $IntegrityPath -Raw | ConvertFrom-Json
@@ -117,27 +119,27 @@ if (!(Test-Path $IntegrityPath -PathType Leaf)) {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
             if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { $bad.Add("hash:$rel") }
         }
-        if ($bad.Count -eq 0) { Pass "Código/runtime coinciden con integrity-manifest.json" }
-        else { Fail "Integridad de archivos protegidos falló: $($bad -join ', ')" }
-    } catch { Fail "No pude validar integrity-manifest.json: $($_.Exception.Message)" }
+        if ($bad.Count -eq 0) { Pass (T 'msg_a32f1621ba67') }
+        else { Fail (T 'msg_ee24f3dfe248' -Arguments @(($bad -join ', '))) }
+    } catch { Fail (T 'msg_bef5f04beaf0' -Arguments @(($_.Exception.Message))) }
 }
 
 $Python = Join-Path $InstallDir "runtime\python.exe"
 if (Test-Path $Python) {
     & $Python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('pip') is None else 1)"
-    if ($LASTEXITCODE -eq 0) { Pass "Runtime del servicio no contiene pip" }
-    else { Fail "Runtime del servicio todavía contiene pip" }
+    if ($LASTEXITCODE -eq 0) { Pass (T 'msg_9cac14293558') }
+    else { Fail (T 'msg_6736c71dba77') }
     & $Python (Join-Path $InstallDir "lampctl.py") service-status *> $null
-    if ($LASTEXITCODE -eq 0) { Pass "Named Pipe local responde" } else { Fail "Named Pipe no responde" }
+    if ($LASTEXITCODE -eq 0) { Pass "Named Pipe local responde" } else { Fail (T 'msg_63052775fe01') }
     if (Test-Path (Join-Path $InstallDir "secrets\token.dpapi.json")) {
         & $Python -c "from mijialamp.secrets_store import token_metadata; import sys; sys.exit(0 if token_metadata().get('scope') == 'local-machine' else 1)"
         if ($LASTEXITCODE -eq 0) { Pass "Token DPAPI usa scope LocalMachine" }
-        else { Fail "Token existente no usa scope LocalMachine" }
+        else { Fail (T 'msg_0318f9d81331') }
     }
-} else { Fail "Falta runtime\python.exe" }
+} else { Fail (T 'msg_3563a00782f2') }
 
 if ($Failures.Count -gt 0) {
-    Write-Host "Security check: $($Failures.Count) fallo(s)." -ForegroundColor Red
+    Write-Host (T 'msg_fe8623e72889' -Arguments @(($Failures.Count))) -ForegroundColor (T 'msg_ba19e9c3d5f4')
     exit 1
 }
 Write-Host "Security check: OK" -ForegroundColor Green

@@ -90,7 +90,7 @@ class DualModeTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         text = (root / "start-portable.cmd").read_text(encoding="utf-8").lower()
         self.assertIn("runtime-status", text)
-        self.assertIn("ya esta ejecutandose", text)
+        self.assertIn("is already running", text)
 
     def test_portable_release_prefers_bundled_runtime(self):
         root = Path(__file__).resolve().parents[1]

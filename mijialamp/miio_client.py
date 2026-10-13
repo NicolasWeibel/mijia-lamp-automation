@@ -4,8 +4,12 @@ import ipaddress
 import os
 import socket
 import subprocess
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timedelta
+
+from mijialamp.i18n import tr
 
 from .config import read_device_cache, update_device_cache, update_lamp_ip
 from .errors import CommunicationError, DeviceMismatchError
@@ -19,7 +23,7 @@ def _import_device():
     try:
         from miio import Device
     except Exception as exc:
-        raise CommunicationError("No se pudo importar python-miio. Ejecutá install.ps1 nuevamente.") from exc
+        raise CommunicationError(tr("msg_2781f4e8bf93")) from exc
     return Device
 
 
@@ -48,6 +52,8 @@ class MiioLampClient:
         self.token_scope = token_scope
         self._token_cache: str | None = None
         self._token_mtime_ns: int | None = None
+        self._critical_session_lock = threading.Lock()
+        self._critical_session: tuple[str, bytes, datetime, float] | None = None
 
     @property
     def token(self) -> str:
@@ -69,6 +75,20 @@ class MiioLampClient:
             lazy_discover=True,
         )
 
+    def _remember_critical_session(self, dev, ip: str) -> None:
+        """Keep a verified miIO header so Suspend can send without a new handshake."""
+        protocol = getattr(dev, "_protocol", None)
+        if protocol is None or not getattr(protocol, "_discovered", False):
+            return
+        device_id = getattr(protocol, "_device_id", None)
+        device_ts = getattr(protocol, "_device_ts", None)
+        if not isinstance(device_id, (bytes, bytearray)) or not isinstance(device_ts, datetime):
+            return
+        if int.from_bytes(device_id, byteorder="big") != int(self.cfg["device_id"]):
+            return
+        with self._critical_session_lock:
+            self._critical_session = (str(ip), bytes(device_id), device_ts, time.monotonic())
+
     def probe_identity(self, ip: str, timeout: float | None = None) -> tuple[str, str]:
         dev = self._device(ip, timeout)
         try:
@@ -76,20 +96,15 @@ class MiioLampClient:
             model = _extract_model(info)
             did = str(dev.device_id)
         except Exception as exc:
-            raise CommunicationError(
-                f"miIO no respondió correctamente en {ip}: {redact_secrets(exc)}"
-            ) from exc
+            raise CommunicationError(tr("msg_86ff42a55699", ip, redact_secrets(exc))) from exc
 
         expected_model = str(self.cfg["expected_model"])
         expected_did = str(self.cfg["device_id"])
         if model != expected_model:
-            raise DeviceMismatchError(
-                f"El dispositivo en {ip} reportó modelo {model!r}; esperaba {expected_model!r}"
-            )
+            raise DeviceMismatchError(tr("msg_d1dea2a2a922", ip, model, expected_model))
         if did != expected_did:
-            raise DeviceMismatchError(
-                f"El dispositivo en {ip} reportó DID {did!r}; esperaba {expected_did!r}"
-            )
+            raise DeviceMismatchError(tr("msg_bfff7e1eb6b4", ip, did, expected_did))
+        self._remember_critical_session(dev, ip)
         return model, did
 
     def read_state(self, ip: str | None = None, timeout: float | None = None) -> LampPhysicalState:
@@ -98,9 +113,10 @@ class MiioLampClient:
         try:
             values = dev.send("get_prop", ["power", "bright", "ct"], retry_count=1)
         except Exception as exc:
-            raise CommunicationError(f"No pude leer el estado físico en {ip}: {redact_secrets(exc)}") from exc
+            raise CommunicationError(tr("msg_3a3eafcc4090", ip, redact_secrets(exc))) from exc
+        self._remember_critical_session(dev, ip)
         if not isinstance(values, (list, tuple)) or not values:
-            raise CommunicationError(f"Respuesta get_prop inesperada desde {ip}: {values!r}")
+            raise CommunicationError(tr("msg_744c49f1bcb6", ip, values))
         power = str(values[0]).lower() if values[0] is not None else None
         try:
             brightness = int(values[1]) if len(values) > 1 and values[1] is not None else None
@@ -121,16 +137,45 @@ class MiioLampClient:
         try:
             dev.send("set_power", params, retry_count=1 if fast else int(self.cfg.get("retries", 2)))
         except Exception as exc:
-            raise CommunicationError(f"Falló set_power({power}) en {ip}: {redact_secrets(exc)}") from exc
+            raise CommunicationError(tr("msg_2bedf6cf95f2", power, ip, redact_secrets(exc))) from exc
+        self._remember_critical_session(dev, ip)
 
     def set_power_critical_off(self, *, ip: str | None = None, timeout: float = 0.25) -> None:
-        """Best-effort OFF for Suspend: fixed IP, no discovery, no retries, hard timeout."""
+        """Best-effort OFF for Suspend with a bounded miIO handshake fallback."""
         ip = str(ip or self.cfg["lamp_ip"])
-        dev = self._device(ip, float(timeout))
+        budget = max(0.05, float(timeout))
+        deadline = time.monotonic() + budget
+        dev = self._device(ip, budget)
+        protocol = dev._protocol
+        with self._critical_session_lock:
+            session = self._critical_session
         try:
+            if session is not None and session[0] == ip:
+                _, device_id, device_ts, recorded_at = session
+                protocol._device_id = device_id
+                protocol._device_ts = device_ts + timedelta(seconds=max(0.0, time.monotonic() - recorded_at))
+                protocol._discovered = True
+            else:
+                # python-miio's ordinary send_handshake ignores Device.timeout and can
+                # wait for several 5-second attempts. Use one bounded unicast hello.
+                hello = protocol.discover(ip, timeout=max(0.01, (deadline - time.monotonic()) / 2))
+                if hello is None:
+                    raise TimeoutError(tr("msg_fb710c0fae93"))
+                header = hello.header.value
+                device_id = bytes(header.device_id)
+                if int.from_bytes(device_id, byteorder="big") != int(self.cfg["device_id"]):
+                    raise DeviceMismatchError(tr("msg_07ea28ab4081"))
+                protocol._device_id = device_id
+                protocol._device_ts = header.ts
+                protocol._discovered = True
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(tr("msg_ce3cfb364637"))
+            protocol._timeout = remaining
             dev.send("set_power", ["off"], retry_count=0)
+            self._remember_critical_session(dev, ip)
         except Exception as exc:
-            raise CommunicationError(f"Falló OFF crítico en {ip}: {redact_secrets(exc)}") from exc
+            raise CommunicationError(tr("msg_8aa6443ba87e", ip, redact_secrets(exc))) from exc
 
     def apply_profile(self, profile: ProfileValues, *, ip: str | None = None, fast: bool = False) -> None:
         ip = str(ip or self.cfg["lamp_ip"])
@@ -153,15 +198,24 @@ class MiioLampClient:
                 dev.send("set_bright", [profile.brightness], retry_count=1)
         except Exception as exc:
             raise CommunicationError(
-                f"Falló aplicar perfil {profile.name} ({profile.kelvin}K/{profile.brightness}%) "
-                f"en {ip}: {redact_secrets(exc)}"
+                tr(
+                    "msg_fe48ca7781cd",
+                    profile.name,
+                    profile.kelvin,
+                    profile.brightness,
+                    ip,
+                    redact_secrets(exc),
+                )
             ) from exc
+        self._remember_critical_session(dev, ip)
 
     def _probe_handshake_did(self, ip: str, timeout: float) -> str | None:
-        Device = _import_device()
         try:
-            dev = Device(ip=str(ip), token=self.token, timeout=float(timeout), lazy_discover=True)
-            response = dev.send_handshake()
+            dev = self._device(str(ip), timeout)
+            # Device.send_handshake() uses python-miio's implicit 5-second discovery
+            # even when Device.timeout is shorter. A /24 scan must honor its per-host
+            # timeout or it can hold the control lock throughout Resume.
+            response = dev._protocol.discover(str(ip), timeout=max(0.01, float(timeout)))
             return _handshake_did(response) or None
         except Exception:
             return None
@@ -200,7 +254,7 @@ class MiioLampClient:
                     result.append(ip)
             return result
         except Exception as exc:
-            self.log.debug("Get-NetNeighbor no disponible: %s", exc)
+            self.log.debug(tr("msg_9e878451b144"), exc)
             return []
 
     def _mdns_candidates(self, timeout: float) -> list[str]:
@@ -210,7 +264,7 @@ class MiioLampClient:
             found = Discovery.discover_mdns(timeout=float(timeout))
             return list(found.keys())
         except Exception as exc:
-            self.log.info("mDNS discovery no disponible/falló: %s", exc)
+            self.log.info(tr("msg_2350cb9959da"), exc)
             return []
 
     def _local_scan_network(self) -> ipaddress.IPv4Network | None:
@@ -234,7 +288,7 @@ class MiioLampClient:
             model, did = self.probe_identity(ip, timeout=1.25)
         except (CommunicationError, DeviceMismatchError):
             return None
-        self.log.info("Discovery %s validó %s model=%s did=%s", source, ip, model, did)
+        self.log.info(tr("msg_5046037d017d"), source, ip, model, did)
         if ip != old_ip:
             update_lamp_ip(ip)
             self.cfg["lamp_ip"] = ip
@@ -307,7 +361,7 @@ class MiioLampClient:
 
         failures = int(cache.get("consecutive_discovery_failures", 0) or 0) + 1
         update_device_cache(consecutive_discovery_failures=failures, last_discovery_failure_at=now)
-        self.log.warning("Discovery finalizó sin encontrar el dispositivo esperado")
+        self.log.warning(tr("msg_f2a58af08080"))
         return None
 
     def network_changed(self) -> None:
@@ -350,6 +404,4 @@ class MiioLampClient:
             time.sleep(min(delay, remaining))
             delay = min(2.0, delay * 2)
 
-        raise CommunicationError(
-            f"La lámpara no quedó disponible dentro de {wait_seconds}s ({redact_secrets(last_error)})"
-        )
+        raise CommunicationError(tr("msg_afdab6e1010d", wait_seconds, redact_secrets(last_error)))

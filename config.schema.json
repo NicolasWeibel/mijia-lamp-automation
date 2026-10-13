@@ -19,6 +19,12 @@
     "light_profiles"
   ],
   "properties": {
+    "ui_language": {
+      "type": "string",
+      "enum": ["en", "es"],
+      "default": "en",
+      "description": "Language of the installer, settings, tray and application messages."
+    },
     "$schema": {
       "type": "string"
     },
@@ -240,6 +246,10 @@
     },
     "ignore_remote_sessions": {
       "type": "boolean"
+    },
+    "service_prelogin_display": {
+      "type": "boolean",
+      "description": "Allow the Windows Service to follow the console display before sign-in."
     },
     "network_wait_seconds_on": {
       "type": "number",
