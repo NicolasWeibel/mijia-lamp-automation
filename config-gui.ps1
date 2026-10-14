@@ -221,9 +221,11 @@ function Get-ValidatorPython {
     )) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
     }
-    $command = Get-Command py.exe -ErrorAction SilentlyContinue
-    if ($command) { return $command.Source }
+    # Honor the interpreter selected by a virtual environment or setup-python.
+    # The launcher can select a different installation without our dependencies.
     $command = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    $command = Get-Command py.exe -ErrorAction SilentlyContinue
     if ($command) { return $command.Source }
     throw (T 'msg_702b5c56191f')
 }
@@ -731,6 +733,7 @@ $save.Add_Click({
 })
 
 if ($SelfTest) {
+    Write-Host ('Settings validator Python: ' + (Get-ValidatorPython))
     if ($env:MIJIALAMP_CITY_TEST) {
         $city.Text = "Mendoza, Argentina"
         & $searchCityAction

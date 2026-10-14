@@ -152,6 +152,10 @@ jobs:
         run: |
           python -c "from miio import Device; import win32serviceutil, pystray, PIL; import service, agent; from mijialamp.controller import LampController; print('runtime imports: OK')"
 
+      - name: Verify settings Python interpreter selection
+        shell: powershell
+        run: ./scripts/test-settings-python.ps1
+
       - name: Exercise English and Spanish interfaces without installation
         shell: powershell
         run: |
