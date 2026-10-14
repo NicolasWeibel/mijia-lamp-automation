@@ -1,4 +1,5 @@
 ﻿. (Join-Path (Split-Path -Parent $PSScriptRoot) 'i18n.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'version.ps1')
 $env:MIJIALAMP_LANGUAGE = 'es'
 Initialize-MijiaLampLanguage -Language es
 $ErrorActionPreference = 'Stop'
@@ -35,7 +36,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $runtime '__pycache__') | Out-Null
     $python = Join-Path $runtime 'python.exe'
     [IO.File]::WriteAllText($python, 'non-executable test fixture')
-    @{ schema = 1; project_version = '3.1.3'; runtime_files = @(@{
+    @{ schema = 1; project_version = (Get-MijiaLampVersion); runtime_files = @(@{
         path = 'python.exe'; sha256 = (Get-FileHash -LiteralPath $python -Algorithm SHA256).Hash
     }) } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
     # GUI callbacks must verify hashes even when module autoload is unavailable.

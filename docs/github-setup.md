@@ -18,7 +18,7 @@
    This has already been done for `NicolasWeibel/mijia-lamp-automation`; do not run `git remote add` again if `origin` exists. Do not use `git push --tags` for the first push.
 5. Wait for every CI job to finish. The first release should also wait for a manual Portable and Service test with a real lamp on Windows.
 6. Configure `main` branch protection, dependency alerts, secret protection, and `v*` tag rules before publishing the first release.
-7. Publish `v3.1.3` only when those checks are green. The workflow builds and verifies the ZIPs before creating the release.
+7. Publish the prepared version only when those checks are green. The workflow builds and verifies the ZIPs before creating the release.
 
 The workflow is ready, but no local ZIP yet has GitHub provenance. That provenance will exist after a release is built and attested from the published repository.
 
@@ -57,7 +57,7 @@ The project uses `MAJOR.MINOR.PATCH` semantic versioning. Each release correspon
 
 To prepare a new version:
 
-1. Update `pyproject.toml`, `mijialamp/__init__.py`, `install.ps1`, `prepare-service-runtime.ps1`, `setup-portable.ps1`, and `scripts/build-dependency-manifest.ps1`. Also update tests that include the version in fixtures. `scripts/check_repository.py` checks that installation scripts match the project version.
+1. Change only `__version__` in `mijialamp/__init__.py`. Packaging reads it through setuptools; PowerShell scripts read it as data through `version.ps1`; test fixtures use the same source. `scripts/check_repository.py` rejects duplicate fixed versions and mismatching release tags.
 2. Add a dated entry to `CHANGELOG.md` and update documentation or dependency pins as needed.
 3. Open a PR, review the changes, and wait for green CI on `main` after merge. Test Portable and Service on Windows with a real lamp for the first release and for changes affecting installation or physical behavior.
 4. From an up-to-date, clean `main`, create and push only the version tag:
@@ -66,11 +66,13 @@ To prepare a new version:
    git switch main
    git pull --ff-only origin main
    git status --short
-   git tag -a v3.1.3 -m "MijiaLamp v3.1.3"
-   git push origin v3.1.3
+   . .\version.ps1
+   $version = Get-MijiaLampVersion
+   git tag -a "v$version" -m "MijiaLamp v$version"
+   git push origin "v$version"
    ```
 
-   Replace `3.1.3` with the prepared version. The workflow rejects lightweight tags, tags that do not point to a commit on `main`, and tags that do not match `pyproject.toml`.
+   The commands read the version automatically from the current checkout. The workflow rejects lightweight tags, tags that do not point to a commit on `main`, and tags that do not match `pyproject.toml`.
 
 The release workflow audits pins, builds ZIP/checksum/SBOM/dependency manifest, verifies ZIP contents, attests the artifacts, and creates the GitHub Release. Check that the workflow succeeds and verify the downloaded ZIP before installing it.
 

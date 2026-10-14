@@ -4,7 +4,7 @@
 
 Automatización local para lámparas Xiaomi/Mijia compatibles con `python-miio` en Windows 10/11.
 
-**v3.1.3** ofrece dos modos sobre el mismo núcleo de policy/controller:
+**MijiaLamp** ofrece dos modos sobre el mismo núcleo de policy/controller:
 
 | | Portable | Hardened Service |
 |---|---|---|
@@ -24,7 +24,7 @@ Automatización local para lámparas Xiaomi/Mijia compatibles con `python-miio` 
 
 ## Instalación y configuración con interfaz
 
-En Windows, descargá y extraé **`MijiaLamp-Setup-3.1.3.zip`** y abrí **`setup-gui.vbs` con doble clic desde el Explorador**, como usuario normal. Se abre el asistente sin una terminal detrás. `setup-gui.cmd` también sigue disponible como lanzador.
+En Windows, descargá y extraé **`MijiaLamp-Setup-<version>.zip`** y abrí **`setup-gui.vbs` con doble clic desde el Explorador**, como usuario normal. Se abre el asistente sin una terminal detrás. `setup-gui.cmd` también sigue disponible como lanzador.
 
 El recorrido inicial es **Idioma → Modo → Lámpara → Configuración → Instalar → Listo**. Elegí inglés o español en la primera pantalla; la selección se guarda como `ui_language` y podés cambiarla más adelante en Preferencias. Para aplicar allí el idioma nuevo, guardá y volvé a abrir Preferencias. La interfaz, las ayudas, la bandeja, las notificaciones y los errores de la aplicación usan el idioma elegido; los errores que genera Windows u otro componente externo pueden conservar su idioma original. El paquete Setup permite elegir Portable o Service; los ZIPs específicos incluyen sólo su modo. En «Lámpara», conectá Mi Home mediante QR y elegí el dispositivo: se comprueban IP, modelo y DID en la red local y se cifra el token. Podés cambiar de lámpara usando la misma lista mientras el asistente siga abierto; actualizar la lista requiere otro QR.
 
@@ -144,7 +144,7 @@ gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lam
 
 Si esa verificación falla o no existe una attestation para el ZIP, no ejecutes el instalador elevado. El archivo `.zip.sha256` detecta cambios accidentales, pero por sí solo no demuestra quién publicó el ZIP. La attestation acredita procedencia del build; tampoco garantiza que el código o sus dependencias estén libres de malware. Consultá [`docs/es/security.md`](docs/es/security.md) para el procedimiento y los límites.
 
-La primera publicación de estos cambios debe usar la etiqueta `v3.1.3`. Verificá el ZIP correspondiente; una attestation de otra versión no cubre esta copia.
+Publicá una etiqueta anotada que coincida con la versión de `mijialamp/__init__.py`. Verificá el ZIP correspondiente; una attestation de otra versión no cubre esta copia.
 
 Los ZIPs generados localmente sin `-IncludePreparedRuntime` son bootstrap sin runtime preparado. Requieren la preparación indicada abajo y no cuentan por sí solos con la procedencia de una release oficial atestada.
 

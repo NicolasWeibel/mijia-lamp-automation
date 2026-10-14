@@ -1,4 +1,5 @@
 ﻿. (Join-Path (Split-Path -Parent $PSScriptRoot) 'i18n.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'version.ps1')
 $env:MIJIALAMP_LANGUAGE = 'es'
 Initialize-MijiaLampLanguage -Language es
 $ErrorActionPreference = "Stop"
@@ -79,7 +80,7 @@ try {
     $SourceRoot = Join-Path $testRoot "source-check"
     $PreparedPython = Join-Path $SourceRoot "prepared-runtime\python"
     $ManifestPath = Join-Path $SourceRoot "prepared-runtime\manifest.json"
-    $ProjectVersion = "3.1.3"
+    $ProjectVersion = Get-MijiaLampVersion
     New-Item -ItemType Directory -Path $PreparedPython -Force | Out-Null
     $preparedExe = Join-Path $PreparedPython "python.exe"
     Set-Content -LiteralPath $preparedExe -Value "runtime fixture"

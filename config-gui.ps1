@@ -243,9 +243,18 @@ except Exception as exc:
     sys.exit(2)
 '@
     $encodedJson = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Json))
-    $output = $encodedJson | & $python -B -c $code $Root
+    # Base64 is ASCII. Windows PowerShell may otherwise prepend a UTF-8 BOM
+    # to native stdin, which Python cannot decode as a Base64 string.
+    $previousEncoding = $OutputEncoding
+    try {
+        $OutputEncoding = [Text.Encoding]::ASCII
+        $output = $encodedJson | & $python -B -c $code $Root
+        $validationExitCode = $LASTEXITCODE
+    } finally {
+        $OutputEncoding = $previousEncoding
+    }
     $result = $output | ConvertFrom-Json
-    if ($LASTEXITCODE -ne 0 -or -not $result.ok) { throw [string]$result.message }
+    if ($validationExitCode -ne 0 -or -not $result.ok) { throw [string]$result.message }
 }
 
 function Save-ConfigJson {
@@ -751,6 +760,20 @@ if ($SelfTest) {
     if ($edited.wind_down_start -ne "21:45" -or $edited.pre_sleep_start -ne "22:45" -or
         $edited.night_end -ne "sunrise" -or $edited.bedtime -ne "23:45") { throw (T 'msg_d4b7a0c4929d') }
     Test-ConfigJson $json
+    # Exercise the BOM-producing Windows PowerShell setting used by CI,
+    # as well as legacy ASCII stdin, with the accented city name above.
+    $selfTestEncoding = $OutputEncoding
+    try {
+        foreach ($encoding in @([Text.UTF8Encoding]::new($true), [Text.Encoding]::ASCII)) {
+            $OutputEncoding = $encoding
+            Test-ConfigJson $json
+            if (-not [object]::ReferenceEquals($OutputEncoding, $encoding)) {
+                throw 'Configuration validation did not restore the caller encoding.'
+            }
+        }
+    } finally {
+        $OutputEncoding = $selfTestEncoding
+    }
     if ($tabs.TabPages.Count -ne 1 -or $tabs.TabPages[0].Text -ne (T 'msg_5678a7dd3fa7')) { throw (T 'msg_1ecb96096b78') }
     $advancedToggle.Checked = $true
     if ($tabs.TabPages.Count -lt 5) { throw (T 'msg_9658e40d645f') }

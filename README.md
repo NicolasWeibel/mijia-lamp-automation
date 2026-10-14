@@ -4,7 +4,7 @@
 
 Local automation for compatible Xiaomi/Mijia lamps using `python-miio` on Windows 10/11.
 
-**v3.1.3** offers two modes on the same policy/controller core:
+**MijiaLamp** offers two modes on the same policy/controller core:
 
 | | Portable | Hardened Service |
 |---|---|---|
@@ -24,7 +24,7 @@ Local automation for compatible Xiaomi/Mijia lamps using `python-miio` on Window
 
 ## Installation and setup with the interface
 
-On Windows, download and extract **`MijiaLamp-Setup-3.1.3.zip`** and double-click **`setup-gui.vbs` in File Explorer** as a standard user. The wizard opens without a console. `setup-gui.cmd` is also available as a launcher.
+On Windows, download and extract **`MijiaLamp-Setup-<version>.zip`** and double-click **`setup-gui.vbs` in File Explorer** as a standard user. The wizard opens without a console. `setup-gui.cmd` is also available as a launcher.
 
 The first-run flow is **Language → Mode → Lamp → Settings → Install → Ready**. Choose English or Spanish on the Language page; the choice is saved as `ui_language` and can be changed later in Preferences by saving and reopening the editor. The interface, tooltips, tray, notifications, and application errors use the selected language. Windows errors that come from external components may remain in their original language.
 
@@ -146,7 +146,7 @@ gh attestation verify .\MijiaLamp-Service-VERSION.zip -R NicolasWeibel/mijia-lam
 
 If verification fails or no attestation exists for the ZIP, do not run the installer elevated. The `.zip.sha256` file detects accidental changes, but by itself does not prove who published the ZIP. The attestation establishes build provenance; it does not guarantee the code or dependencies are free of malware. See [`docs/security.md`](docs/security.md) for the procedure and its limits.
 
-The first publication of these changes must use the `v3.1.3` tag. Verify the corresponding ZIP; an attestation for another version does not cover this copy.
+Publish an annotated tag matching the version in `mijialamp/__init__.py`. Verify the corresponding ZIP; an attestation for another version does not cover this copy.
 
 ZIPs built locally without `-IncludePreparedRuntime` are bootstrap packages without a prepared runtime. They require the preparation steps below and do not by themselves have the provenance of an attested official release.
 

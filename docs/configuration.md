@@ -37,6 +37,8 @@ Each has validated `kelvin` and `brightness` values.
 - `stepped`: discrete changes.
 - `continuous`: interpolation between nighttime anchors.
 
+In continuous mode, dimming starts at the beginning of the night: the evening values gradually approach the wind-down values by `wind_down_start`, then the pre-sleep values by `pre_sleep_start`. These times are targets, rather than the start of each reduction. Brightness is rounded to whole percentage points and applied during synchronization, so the lamp receives small separate adjustments rather than a fade lasting all evening. Each adjustment requests the `profile_transition_ms` fade (700 ms by default); devices that reject smooth commands receive an immediate change instead. Brightness percentage is a device setting, not a measurement of light output.
+
 ## External changes
 
 `external_change_policy`:

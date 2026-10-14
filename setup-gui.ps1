@@ -1,5 +1,6 @@
 ﻿param([switch]$SelfTest, [ValidateSet('en', 'es')][string]$Language = '')
 . (Join-Path $PSScriptRoot 'i18n.ps1')
+. (Join-Path $PSScriptRoot 'version.ps1')
 Initialize-MijiaLampLanguage -Language $Language
 $ErrorActionPreference = 'Stop'
 trap {
@@ -402,7 +403,7 @@ function Ensure-Runtime {
     }
     Add-Status (T 'msg_e77bb8ec09d8')
     $data = Get-Content -LiteralPath $manifest -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($data.schema -ne 1 -or $data.project_version -ne '3.1.3' -or -not $data.runtime_files) { throw (T 'msg_ce7e72ab9d87') }
+    if ($data.schema -ne 1 -or $data.project_version -ne (Get-MijiaLampVersion) -or -not $data.runtime_files) { throw (T 'msg_ce7e72ab9d87') }
     $items = @(Get-Item -LiteralPath $runtime -Force) + @(Get-ChildItem -LiteralPath $runtime -Recurse -Force)
     if (@($items | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }).Count) {
         throw (T 'msg_854071a64443')

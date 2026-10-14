@@ -7,17 +7,16 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+. (Join-Path $Root 'version.ps1')
 if ($OutputDir -eq "") { $OutputDir = Join-Path $Root "release" }
-$VersionText = Get-Content (Join-Path $Root "mijialamp\__init__.py") -Raw
-if ($VersionText -notmatch '__version__\s*=\s*"([^"]+)"') { throw "Could not determine version" }
-$Version = $Matches[1]
+$Version = Get-MijiaLampVersion
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 $CommonFiles = @(
     "README.md", "README.es.md", "CHANGELOG.md", "CHANGELOG.es.md", "CONTRIBUTING.md", "CONTRIBUTING.es.md", "SECURITY.md", "SECURITY.es.md", "LICENSE", "THIRD_PARTY_NOTICES.md",
     "pyproject.toml", "config.example.json", "config.schema.json",
     "requirements.lock.txt", "requirements.windows.lock.txt", "requirements.miio.lock.txt",
-    "i18n.ps1", "lampctl.py", "sleepnow.py", "import-token.ps1", "config-gui.ps1", "setup-gui.ps1", "setup-gui.cmd", "setup-gui.vbs", "onboarding-gui.ps1"
+    "i18n.ps1", "version.ps1", "lampctl.py", "sleepnow.py", "import-token.ps1", "config-gui.ps1", "setup-gui.ps1", "setup-gui.cmd", "setup-gui.vbs", "onboarding-gui.ps1"
 )
 $CommonDirs = @("mijialamp", "tools", "docs")
 

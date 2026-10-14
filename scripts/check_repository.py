@@ -35,6 +35,7 @@ REQUIRED_PUBLIC_FILES = (
     "onboarding-gui.ps1",
     "config-gui.ps1",
     "i18n.ps1",
+    "version.ps1",
     "README.es.md",
     "mijialamp/locales/en.json",
     "mijialamp/locales/es.json",
@@ -48,12 +49,14 @@ TOKEN_LIKE = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 TEXT_SUFFIXES = {".py", ".ps1", ".cmd", ".json", ".md", ".toml", ".yml", ".yaml", ".txt"}
 PROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
 PACKAGE_VERSION_RE = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
-VERSIONED_SCRIPTS = {
-    "install.ps1": r'^\$ProjectVersion\s*=\s*"([^"]+)"',
-    "prepare-service-runtime.ps1": r'^\s*project_version\s*=\s*"([^"]+)"',
-    "setup-portable.ps1": r'\$manifest\.project_version\s*-ne\s*"([^"]+)"',
-    "scripts/build-dependency-manifest.ps1": r'\$manifest\.project_version\s*-ne\s*"([^"]+)"',
-}
+VERSIONED_SCRIPTS = (
+    "install.ps1",
+    "prepare-service-runtime.ps1",
+    "setup-portable.ps1",
+    "setup-gui.ps1",
+    "scripts/build-release.ps1",
+    "scripts/build-dependency-manifest.ps1",
+)
 
 
 def fail(message: str) -> None:
@@ -63,10 +66,18 @@ def fail(message: str) -> None:
 
 def _project_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = PROJECT_VERSION_RE.search(text)
-    if not match:
-        fail("pyproject.toml does not contain a readable project.version")
-    return match.group(1)
+    sections = dict(re.findall(r"(?ms)^\[([^\]]+)\]\s*\n(.*?)(?=^\[|\Z)", text))
+    project = sections.get("project", "")
+    if PROJECT_VERSION_RE.search(project) or not re.search(
+        r'^dynamic\s*=\s*\[\s*"version"\s*\]\s*$', project, re.MULTILINE
+    ):
+        fail("pyproject.toml must read the canonical version dynamically")
+    dynamic = sections.get("tool.setuptools.dynamic", "")
+    if not re.search(
+        r'^version\s*=\s*\{\s*attr\s*=\s*"mijialamp\.__version__"\s*\}\s*$', dynamic, re.MULTILINE
+    ):
+        fail("setuptools must read version from mijialamp.__version__")
+    return _package_version()
 
 
 def _package_version() -> str:
@@ -87,14 +98,10 @@ def check_hygiene() -> None:
             fail(f"required public file is missing: {name}")
 
     project_version = _project_version()
-    package_version = _package_version()
-    if project_version != package_version:
-        fail(f"version mismatch: pyproject={project_version}, package={package_version}")
-    for name, pattern in VERSIONED_SCRIPTS.items():
+    for name in VERSIONED_SCRIPTS:
         script = (ROOT / name).read_text(encoding="utf-8")
-        match = re.search(pattern, script, re.MULTILINE)
-        if not match or match.group(1) != project_version:
-            fail(f"version mismatch in {name}: expected {project_version}")
+        if "Get-MijiaLampVersion" not in script or re.search(r"[\"'][0-9]+\.[0-9]+\.[0-9]+[\"']", script):
+            fail(f"{name} must use version.ps1 instead of a fixed project version")
     git_ref = os.environ.get("GITHUB_REF", "")
     if git_ref.startswith("refs/tags/") and git_ref.removeprefix("refs/tags/") != f"v{project_version}":
         fail(f"release tag {git_ref!r} does not match project version v{project_version}")

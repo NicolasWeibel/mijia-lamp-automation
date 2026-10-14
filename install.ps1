@@ -9,11 +9,12 @@
 )
 
 . (Join-Path $PSScriptRoot 'i18n.ps1')
+. (Join-Path $PSScriptRoot 'version.ps1')
 Initialize-MijiaLampLanguage -ConfigPath $ConfigPath
 $ErrorActionPreference = "Stop"
 $SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServiceName = "MijiaLampService"
-$ProjectVersion = "3.1.3"
+$ProjectVersion = Get-MijiaLampVersion
 $PreparedRoot = Join-Path $SourceRoot "prepared-runtime"
 $ManifestPath = Join-Path $PreparedRoot "manifest.json"
 $PreparedPython = Join-Path $PreparedRoot "python"
@@ -251,7 +252,7 @@ function Copy-ProjectFiles {
         "config.example.json", "config.schema.json", "requirements.lock.txt", "requirements.windows.lock.txt", "requirements.miio.lock.txt",
         "pyproject.toml", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.es.md", "CHANGELOG.md", "CHANGELOG.es.md", "SECURITY.md", "SECURITY.es.md", "CONTRIBUTING.md", "CONTRIBUTING.es.md",
         "import-token.ps1", "manual-on.cmd", "manual-off.cmd", "status.cmd", "sync.cmd", "sleep-now.cmd",
-        "enable-automation.ps1", "disable-automation.ps1", "uninstall.ps1", "security-check.ps1", "config-gui.ps1", "i18n.ps1"
+        "enable-automation.ps1", "disable-automation.ps1", "uninstall.ps1", "security-check.ps1", "config-gui.ps1", "i18n.ps1", "version.ps1"
     )
     foreach ($file in $files) {
         $src = Join-Path $SourceRoot $file

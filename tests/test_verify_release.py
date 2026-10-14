@@ -7,6 +7,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from mijialamp import __version__
 from scripts.verify_release import VerificationError, verify_archive
 
 
@@ -20,7 +21,7 @@ class VerifyReleaseTests(unittest.TestCase):
         flavor: str = "Service",
         missing_setup_file: bool = False,
     ) -> Path:
-        root = f"MijiaLamp-{flavor}-3.1.3"
+        root = f"MijiaLamp-{flavor}-{__version__}"
         path = folder / f"{root}.zip"
         runtime = b"python executable placeholder"
         source = b"print('agent')\n"
@@ -34,7 +35,7 @@ class VerifyReleaseTests(unittest.TestCase):
             )
         manifest = {
             "schema": 1,
-            "project_version": "3.1.3",
+            "project_version": __version__,
             "runtime_files": [
                 {
                     "path": "python.exe",

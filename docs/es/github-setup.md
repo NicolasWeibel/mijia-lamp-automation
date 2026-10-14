@@ -18,7 +18,7 @@
    Este paso ya se completó para `NicolasWeibel/mijia-lamp-automation`; no repitas `git remote add` si `origin` ya existe. No uses `git push --tags` en la primera subida.
 5. Esperá a que terminen todos los jobs de CI. La primera release debe esperar también una prueba manual de Portable y Service con una lámpara real en Windows.
 6. Configurá protección de `main`, alertas de dependencias, protección contra secretos y reglas para tags `v*` antes de publicar la primera release.
-7. Publicá `v3.1.3` sólo cuando esas comprobaciones estén verdes. El workflow generará y verificará los ZIPs antes de crear la release.
+7. Publicá la versión preparada sólo cuando esas comprobaciones estén verdes. El workflow generará y verificará los ZIPs antes de crear la release.
 
 El workflow está preparado, pero ningún ZIP local tiene todavía procedencia de GitHub. Esa procedencia existirá después de que una release se construya y se atestigüe desde el repositorio publicado.
 
@@ -57,7 +57,7 @@ El proyecto usa versionado semántico `MAJOR.MINOR.PATCH`. Cada release correspo
 
 Para preparar una versión nueva:
 
-1. Actualizá `pyproject.toml`, `mijialamp/__init__.py`, `install.ps1`, `prepare-service-runtime.ps1`, `setup-portable.ps1` y `scripts/build-dependency-manifest.ps1`. Actualizá también las pruebas que incluyen la versión en fixtures. `scripts/check_repository.py` comprueba que los scripts de instalación coincidan con la versión del proyecto.
+1. Cambiá únicamente `__version__` en `mijialamp/__init__.py`. El empaquetado lo lee mediante setuptools; los scripts PowerShell lo leen como dato mediante `version.ps1`; las pruebas usan la misma fuente. `scripts/check_repository.py` rechaza versiones fijas duplicadas y tags de release que no coincidan.
 2. Agregá una entrada fechada en `CHANGELOG.md` y actualizá documentación o pins de dependencias si corresponde.
 3. Abrí un PR, revisá los cambios y esperá CI verde en `main` tras el merge. Probá Portable y Service en Windows con una lámpara real para la primera release y para cambios que afecten instalación o comportamiento físico.
 4. Desde `main` actualizado y limpio, creá y subí sólo el tag de esa versión:
@@ -66,11 +66,13 @@ Para preparar una versión nueva:
    git switch main
    git pull --ff-only origin main
    git status --short
-   git tag -a v3.1.3 -m "MijiaLamp v3.1.3"
-   git push origin v3.1.3
+   . .\version.ps1
+   $version = Get-MijiaLampVersion
+   git tag -a "v$version" -m "MijiaLamp v$version"
+   git push origin "v$version"
    ```
 
-   Reemplazá `3.1.3` por la versión preparada. El workflow rechaza tags ligeros, tags que no apunten a un commit de `main` y tags que no coincidan con `pyproject.toml`.
+   Los comandos leen automáticamente la versión del código actual. El workflow rechaza tags ligeros, tags que no apunten a un commit de `main` y tags que no coincidan con `pyproject.toml`.
 
 El workflow de release audita los pins, construye ZIP/checksum/SBOM/manifest de dependencias, verifica el contenido de los ZIPs, atestigua los artefactos y crea GitHub Release. Revisá que el workflow termine correctamente y verificá el ZIP descargado antes de instalarlo.
 

@@ -1,6 +1,7 @@
 param([string]$OutputDir = "")
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+. (Join-Path $Root 'version.ps1')
 if ($OutputDir -eq "") { $OutputDir = Join-Path $Root "release\dependencies" }
 $Wheelhouse = Join-Path $Root "prepared-runtime\wheelhouse"
 $PreparedManifest = Join-Path $Root "prepared-runtime\manifest.json"
@@ -9,7 +10,7 @@ if (!(Test-Path -LiteralPath $PreparedManifest -PathType Leaf) -or !(Test-Path -
 }
 
 $manifest = Get-Content -LiteralPath $PreparedManifest -Raw | ConvertFrom-Json
-if ([string]$manifest.project_version -ne "3.1.3") { throw "Unexpected prepared-runtime version" }
+if ([string]$manifest.project_version -ne (Get-MijiaLampVersion)) { throw "Unexpected prepared-runtime version" }
 $expected = @{}
 foreach ($entry in $manifest.wheelhouse_files) {
     $relative = [string]$entry.path

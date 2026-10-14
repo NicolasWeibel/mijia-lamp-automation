@@ -5,6 +5,7 @@
     [switch]$GuiProgress
 )
 . (Join-Path $PSScriptRoot 'i18n.ps1')
+. (Join-Path $PSScriptRoot 'version.ps1')
 Initialize-MijiaLampLanguage -ConfigPath $ConfigPath
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -45,7 +46,7 @@ function Verify-BundledRuntime {
     if (@($items | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 }).Count) {
         throw (T 'msg_08b521112374')
     }
-    if ([string]$manifest.project_version -ne "3.1.3") {
+    if ([string]$manifest.project_version -ne (Get-MijiaLampVersion)) {
         throw (T 'msg_9e51b78b3843' -Arguments @(($manifest.project_version)))
     }
     $expected = @{}

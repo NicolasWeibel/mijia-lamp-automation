@@ -52,3 +52,5 @@ Un PR debe explicar problema, comportamiento esperado, riesgos y tests. Cambios 
 Usá mensajes breves que describan el cambio, con un prefijo como `feat:`, `fix:`, `docs:`, `test:` o `chore:`. Por ejemplo: `fix: preserve manual overrides across suspend`. Mantené cada commit enfocado en un cambio revisable.
 
 Las versiones se publican desde `main` con tags anotados `vMAJOR.MINOR.PATCH`, después de actualizar `CHANGELOG.md` y pasar los controles descritos en [`docs/es/github-setup.md`](docs/es/github-setup.md). No muevas un tag ya publicado; publicá una nueva versión para cualquier corrección.
+
+La versión del programa se define únicamente en `__version__` dentro de `mijialamp/__init__.py`. El empaquetado, los scripts PowerShell, las pruebas y los nombres de ZIP la leen automáticamente. Las entradas del changelog conservan explícitamente el historial.

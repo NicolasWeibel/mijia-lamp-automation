@@ -6,8 +6,11 @@ All notable changes are documented here. The project uses semantic versioning an
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-13
+
 ### Added
 
+- Use `mijialamp/__init__.py` as the single source for the application version across package metadata, PowerShell scripts, test fixtures, and release archives.
 - Group temporary pauses under More options → Pause automatic adjustments, with an explanation that pausing does not itself switch the lamp on or off.
 - The tray shows the active mode, manual/pause countdowns, and runtime availability; controls use clearer names and wait for Service/Portable readiness.
 - Add English and Spanish UI catalogs with language selection before setup and a saved preference for settings, tray, notifications and application errors.
@@ -23,6 +26,7 @@ All notable changes are documented here. The project uses semantic versioning an
 
 ### Fixed
 
+- Settings validation sends Base64 as BOM-free ASCII to Python, fixing Windows PowerShell CI failures with UTF-8 pipeline encoding; interface self-tests cover both encodings.
 - Returning to automatic mode cancels manual ON/OFF as well as pauses and external overrides, invalidating delayed OFF reassertions.
 - First-run Xiaomi onboarding requests and displays the QR before offering device selection; empty caches and malformed device lists cannot create a blank lamp row.
 - The Windows wizard uses guided Back/Next pages and displays accented characters correctly in Windows PowerShell 5.1.

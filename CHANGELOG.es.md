@@ -6,8 +6,11 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-13
+
 ### Added
 
+- Usa `mijialamp/__init__.py` como única fuente de la versión del programa para el empaquetado, los scripts PowerShell, las pruebas y los archivos de release.
 - Agrupa las pausas en Más opciones → Pausar ajustes automáticos y aclara que pausar no enciende ni apaga la lámpara por sí solo.
 - La bandeja muestra el modo activo, los minutos restantes de pausas y acciones manuales y la disponibilidad del runtime; los controles tienen nombres más claros y esperan a que Service/Portable esté listo.
 - Agrega catálogos de interfaz en inglés y español, selección de idioma antes de instalar y preferencia guardada para configuración, bandeja, notificaciones y errores.
@@ -23,6 +26,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Fixed
 
+- La validación de configuración envía Base64 como ASCII sin BOM a Python, corrigiendo el fallo de CI de Windows PowerShell con la canalización UTF-8; las pruebas de interfaz cubren ambas codificaciones.
 - Volver al automático cancela el encendido y apagado manual, además de pausas y excepciones externas, e invalida los reintentos de apagado anteriores.
 - La primera conexión con Xiaomi solicita y muestra el QR antes de elegir el dispositivo; las listas vacías o inválidas no pueden generar una fila de lámpara en blanco.
 - El asistente de Windows usa páginas guiadas con Atrás/Siguiente y muestra correctamente los acentos en Windows PowerShell 5.1.

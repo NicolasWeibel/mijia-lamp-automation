@@ -4,9 +4,11 @@
     [switch]$AllowElevatedForCI
 )
 . (Join-Path $PSScriptRoot 'i18n.ps1')
+. (Join-Path $PSScriptRoot 'version.ps1')
 Initialize-MijiaLampLanguage -ConfigPath $ConfigPath
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectVersion = Get-MijiaLampVersion
 $PreparedRoot = Join-Path $Root "prepared-runtime"
 $RuntimePython = Join-Path $PreparedRoot "python"
 $Wheelhouse = Join-Path $PreparedRoot "wheelhouse"
@@ -50,7 +52,7 @@ function Get-ProjectSourceEntries {
         "pyproject.toml", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.es.md", "CHANGELOG.md", "CHANGELOG.es.md", "SECURITY.md", "SECURITY.es.md", "CONTRIBUTING.md", "CONTRIBUTING.es.md",
         "import-token.ps1", "manual-on.cmd", "manual-off.cmd", "status.cmd", "sync.cmd", "sleep-now.cmd",
         "enable-automation.ps1", "disable-automation.ps1", "uninstall.ps1", "security-check.ps1", "install.ps1",
-        "i18n.ps1", "config-gui.ps1", "setup-gui.ps1", "setup-gui.cmd", "setup-gui.vbs", "onboarding-gui.ps1", "prepare-service-runtime.ps1",
+        "i18n.ps1", "version.ps1", "config-gui.ps1", "setup-gui.ps1", "setup-gui.cmd", "setup-gui.vbs", "onboarding-gui.ps1", "prepare-service-runtime.ps1",
         "setup-portable.ps1", "start-portable.cmd", "portable-status.cmd", "portable-on.cmd", "portable-off.cmd", "portable-sleep-now.cmd",
         "enable-portable-autostart.ps1", "disable-portable-autostart.ps1", "enable-portable-automation.ps1", "disable-portable-automation.ps1"
     )
@@ -129,7 +131,7 @@ if ($RefreshSourceOnly) {
         throw (T 'msg_ed9b93a3ff9a')
     }
     $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
-    if ([string]$manifest.project_version -ne "3.1.3") {
+    if ([string]$manifest.project_version -ne $ProjectVersion) {
         throw (T 'msg_01e9b3cedb28')
     }
     if ([string]$manifest.runtime_isolation -ne "python-dll-pth-v1") {
@@ -254,7 +256,7 @@ $WheelEntries = Get-ManifestEntries $Wheelhouse
 $SourceEntries = Get-ProjectSourceEntries
 $Manifest = [ordered]@{
     schema = 1
-    project_version = "3.1.3"
+    project_version = $ProjectVersion
     runtime_isolation = "python-dll-pth-v1"
     prepared_at_utc = [DateTime]::UtcNow.ToString("o")
     python_version = $PythonVersion

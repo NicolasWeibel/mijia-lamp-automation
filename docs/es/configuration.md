@@ -35,7 +35,9 @@ Cada uno tiene `kelvin` y `brightness` validados.
 ### `profile_transition_mode`
 
 - `stepped`: cambios discretos.
-- `continuous`: interpolación entre anchors nocturnos.
+- `continuous`: interpolación entre los horarios de referencia nocturnos.
+
+En modo continuo, la reducción empieza al comienzo de la noche: los valores del perfil inicial se acercan gradualmente a los del perfil de relajación hasta `wind_down_start`, y luego a los del perfil previo al sueño hasta `pre_sleep_start`. Esas horas indican cuándo se alcanza cada nivel, no cuándo comienza cada reducción. El brillo se redondea a puntos porcentuales enteros y se aplica al sincronizar, por lo que la lámpara recibe pequeños ajustes separados. Cada ajuste solicita la transición de `profile_transition_ms` (700 ms por defecto); si el dispositivo rechaza los comandos suaves, se aplica el cambio inmediato. El porcentaje de brillo es un ajuste del dispositivo, no una medición de la luz emitida.
 
 ## Cambios externos
 

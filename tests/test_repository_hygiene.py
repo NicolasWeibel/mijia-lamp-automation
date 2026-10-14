@@ -1,14 +1,25 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.check_repository import check_hygiene
+from scripts.check_repository import _project_version, check_hygiene
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepositoryHygieneTests(unittest.TestCase):
+    def test_package_metadata_follows_a_change_to_the_canonical_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "mijialamp").mkdir()
+            (root / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+            source = root / "mijialamp" / "__init__.py"
+            source.write_text('__version__ = "9.8.7"\n', encoding="utf-8")
+            with patch("scripts.check_repository.ROOT", root):
+                self.assertEqual(_project_version(), "9.8.7")
+
     def test_release_tag_must_match_project_version(self):
         with patch.dict("os.environ", {"GITHUB_REF": "refs/tags/v0.0.0"}), self.assertRaises(SystemExit):
             check_hygiene()
