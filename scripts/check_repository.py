@@ -34,6 +34,7 @@ REQUIRED_PUBLIC_FILES = (
     "setup-gui.ps1",
     "onboarding-gui.ps1",
     "config-gui.ps1",
+    "tools/validate_config.py",
     "i18n.ps1",
     "version.ps1",
     "README.es.md",

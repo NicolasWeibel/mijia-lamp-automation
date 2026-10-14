@@ -26,7 +26,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Fixed
 
-- La validación de configuración envía Base64 como ASCII sin BOM a Python, corrigiendo el fallo de CI de Windows PowerShell con la canalización UTF-8; las pruebas de interfaz cubren ambas codificaciones.
+- La validación de configuración lee Base64 como bytes, elimina un BOM UTF-8 opcional y usa decodificación estricta independiente de la codificación de consola de Python. Las pruebas cubren ciudades con acentos, entrada con BOM, modo UTF-8 y datos inválidos.
 - Volver al automático cancela el encendido y apagado manual, además de pausas y excepciones externas, e invalida los reintentos de apagado anteriores.
 - La primera conexión con Xiaomi solicita y muestra el QR antes de elegir el dispositivo; las listas vacías o inválidas no pueden generar una fila de lámpara en blanco.
 - El asistente de Windows usa páginas guiadas con Atrás/Siguiente y muestra correctamente los acentos en Windows PowerShell 5.1.

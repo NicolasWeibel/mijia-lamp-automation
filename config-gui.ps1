@@ -231,24 +231,14 @@ function Get-ValidatorPython {
 function Test-ConfigJson {
     param([string]$Json)
     $python = Get-ValidatorPython
-    $code = @'
-import base64, json, sys
-sys.path.insert(0, sys.argv[1])
-from mijialamp.config import validate_config
-try:
-    validate_config(json.loads(base64.b64decode(sys.stdin.read()).decode('utf-8')))
-    print(json.dumps({'ok': True}))
-except Exception as exc:
-    print(json.dumps({'ok': False, 'message': str(exc)}, ensure_ascii=True))
-    sys.exit(2)
-'@
+    $validator = Join-Path $Root 'tools\validate_config.py'
     $encodedJson = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Json))
-    # Base64 is ASCII. Windows PowerShell may otherwise prepend a UTF-8 BOM
-    # to native stdin, which Python cannot decode as a Base64 string.
+    # Keep the pipeline ASCII. The validator also handles an optional UTF-8
+    # BOM as bytes, independently of the runner's Python text encoding.
     $previousEncoding = $OutputEncoding
     try {
         $OutputEncoding = [Text.Encoding]::ASCII
-        $output = $encodedJson | & $python -B -c $code $Root
+        $output = $encodedJson | & $python -B $validator
         $validationExitCode = $LASTEXITCODE
     } finally {
         $OutputEncoding = $previousEncoding

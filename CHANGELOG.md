@@ -26,7 +26,7 @@ All notable changes are documented here. The project uses semantic versioning an
 
 ### Fixed
 
-- Settings validation sends Base64 as BOM-free ASCII to Python, fixing Windows PowerShell CI failures with UTF-8 pipeline encoding; interface self-tests cover both encodings.
+- Settings validation reads Base64 as bytes, strips an optional UTF-8 BOM, and uses strict decoding independently of Python's console encoding. Regression tests cover accented cities, BOM input, UTF-8 mode, and invalid data.
 - Returning to automatic mode cancels manual ON/OFF as well as pauses and external overrides, invalidating delayed OFF reassertions.
 - First-run Xiaomi onboarding requests and displays the QR before offering device selection; empty caches and malformed device lists cannot create a blank lamp row.
 - The Windows wizard uses guided Back/Next pages and displays accented characters correctly in Windows PowerShell 5.1.
