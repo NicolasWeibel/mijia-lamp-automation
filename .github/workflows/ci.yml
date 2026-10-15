@@ -158,7 +158,7 @@ jobs:
 
       - name: Verify settings security descriptor preservation
         shell: powershell
-        run: ./scripts/test-settings-acl.ps1
+        run: ./scripts/test-settings-acl.ps1 -InterfaceTest
 
       - name: Exercise English and Spanish interfaces without installation
         shell: powershell

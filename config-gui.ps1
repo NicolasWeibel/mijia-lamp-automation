@@ -266,20 +266,62 @@ function Save-ConfigJson {
         $existingAcl = Get-Acl -LiteralPath $ConfigPath
     }
     $temporary = Join-Path $parent (".mijialamp-config-" + [Guid]::NewGuid().ToString("N") + ".tmp")
-    $backup = Join-Path $parent (".mijialamp-config-" + [Guid]::NewGuid().ToString("N") + ".bak")
     try {
-        [IO.File]::WriteAllText($temporary, $Json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
         if ($existingAcl) {
-            # Replace preserves the destination DACL, but can retain the new
-            # file's owner/group. Copy the full descriptor before the swap.
-            Set-Acl -LiteralPath $temporary -AclObject $existingAcl
-            [IO.File]::Replace($temporary, $ConfigPath, $backup)
+            if (-not ('MijiaLampSettingsFile' -as [type])) {
+                Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+public static class MijiaLampSettingsFile {
+    [DllImport("advapi32.dll", EntryPoint="SetFileSecurityW", CharSet=CharSet.Unicode, SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetFileSecurity(string name, uint information, byte[] descriptor);
+    [DllImport("kernel32.dll", EntryPoint="MoveFileExW", CharSet=CharSet.Unicode, SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool MoveFileEx(string source, string destination, uint flags);
+}
+'@
+            }
+            # Start with an empty, private file so copying the old settings
+            # cannot expose their contents through broader parent permissions.
+            $stream = [IO.File]::Open($temporary, 'CreateNew', 'Write', 'None')
+            $stream.Dispose()
+            $privateAcl = Get-Acl -LiteralPath $temporary
+            $privateAcl.SetAccessRuleProtection($true, $false)
+            foreach ($rule in @($privateAcl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
+                $privateAcl.RemoveAccessRuleSpecific($rule)
+            }
+            $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+            $privateAcl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($userSid, 'FullControl', 'Allow'))
+            if ($PSVersionTable.PSEdition -eq 'Core') {
+                [IO.FileSystemAclExtensions]::SetAccessControl([IO.FileInfo]::new($temporary), $privateAcl)
+            } else {
+                [IO.File]::SetAccessControl($temporary, $privateAcl)
+            }
+            # Copy attributes/streams, then transfer owner/group/DACL without
+            # the automatic ACL merge that duplicates legacy inherited ACEs.
+            [IO.File]::Copy($ConfigPath, $temporary, $true)
+            if (-not [MijiaLampSettingsFile]::SetFileSecurity($temporary, 7, $existingAcl.GetSecurityDescriptorBinaryForm())) {
+                throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
+            [IO.File]::SetCreationTimeUtc($temporary, $item.CreationTimeUtc)
+            $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Json + [Environment]::NewLine)
+            $stream = [IO.File]::Open($temporary, 'Open', 'Write', 'None')
+            try {
+                $stream.SetLength(0)
+                $stream.Write($bytes, 0, $bytes.Length)
+                $stream.Flush($true)
+            } finally { $stream.Dispose() }
+            # Same-directory rename: REPLACE_EXISTING | WRITE_THROUGH, with no
+            # cross-volume copy fallback and no post-save permission repair.
+            if (-not [MijiaLampSettingsFile]::MoveFileEx($temporary, $ConfigPath, 9)) {
+                throw [ComponentModel.Win32Exception]::new([Runtime.InteropServices.Marshal]::GetLastWin32Error())
+            }
         } else {
+            [IO.File]::WriteAllText($temporary, $Json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
             [IO.File]::Move($temporary, $ConfigPath)
         }
     } finally {
         if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
-        if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Force }
     }
 }
 
@@ -802,7 +844,15 @@ if ($SelfTest) {
         $aclBefore = (Get-Acl -LiteralPath $ConfigPath).Sddl
         Save-ConfigJson $json
         $aclAfter = (Get-Acl -LiteralPath $ConfigPath).Sddl
-        if ($aclAfter -ne $aclBefore) {
+        $beforeDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($aclBefore)
+        $afterDescriptor = [Security.AccessControl.RawSecurityDescriptor]::new($aclAfter)
+        # Windows can set this bookkeeping bit during replacement. Preserve
+        # owner/group, every ACE (including inheritance flags), and protection.
+        $autoInherited = [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited
+        foreach ($descriptor in @($beforeDescriptor, $afterDescriptor)) {
+            $descriptor.SetFlags($descriptor.ControlFlags -band (-bnot $autoInherited))
+        }
+        if ($afterDescriptor.GetSddlForm('All') -ne $beforeDescriptor.GetSddlForm('All')) {
             throw ((T 'msg_ebe04ea4342a') + " Before=$aclBefore After=$aclAfter")
         }
         $savedConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json

@@ -26,7 +26,7 @@ Todos los cambios relevantes se documentan aquí. El proyecto usa versionado sem
 
 ### Fixed
 
-- El guardado de configuración copia el descriptor de seguridad existente al archivo de reemplazo antes del intercambio atómico, conservando propietario, grupo y permisos. Las pruebas de Windows cubren grupos no predeterminados y permisos heredados o protegidos.
+- El guardado prepara una copia privada con el descriptor de seguridad y los metadatos NTFS originales, y confirma el cambio mediante renombrado en la misma carpeta para evitar que Windows duplique permisos heredados. Las pruebas cubren guardados repetidos, grupos no predeterminados, permisos heredados, protegidos o antiguos, streams alternativos y recuperación ante fallos; la comparación sólo ignora la marca interna de herencia automática de Windows.
 - Service inicia automáticamente sin la opción de inicio retrasado, reduciendo la espera inicial de los controles de bandeja y de la iluminación previa al inicio de sesión.
 - El editor prefiere el Python configurado en PATH al lanzador del sistema cuando no hay un runtime del proyecto, manteniendo la validación y búsqueda de ciudades en el entorno que contiene las dependencias instaladas.
 - La validación de configuración lee Base64 como bytes, elimina un BOM UTF-8 opcional y usa decodificación estricta independiente de la codificación de consola de Python. Las pruebas cubren ciudades con acentos, entrada con BOM, modo UTF-8 y datos inválidos.
