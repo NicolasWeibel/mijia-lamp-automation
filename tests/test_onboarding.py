@@ -1,9 +1,12 @@
 import base64
+import codecs
 import hashlib
 import importlib.util
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -20,6 +23,42 @@ SPEC.loader.exec_module(ONBOARD)
 
 
 class XiaomiOnboardingTests(unittest.TestCase):
+    def test_select_stdin_preserves_unicode_with_or_without_powershell_bom(self):
+        device = {"did": "42", "model": "yeelink.light.lamp22", "name": "Lámpara", "token": "a" * 32}
+        encoded = base64.b64encode(json.dumps(device, ensure_ascii=False).encode("utf-8"))
+        selected = {"ip": "192.168.1.2", "did": "42", "model": device["model"], "token_staged": True}
+        for prefix in (b"", codecs.BOM_UTF8):
+            with self.subTest(prefix=prefix):
+                output = io.StringIO()
+                stdin = SimpleNamespace(buffer=io.BytesIO(prefix + encoded + b"\r\n"))
+                with (
+                    patch(
+                        "sys.argv",
+                        ["xiaomi_onboarding.py", "select", "--config", "test.json", "--mode", "Portable"],
+                    ),
+                    patch("sys.stdin", stdin),
+                    patch.object(ONBOARD, "select_device", return_value=selected) as select,
+                    redirect_stdout(output),
+                ):
+                    self.assertEqual(ONBOARD.main(), 0)
+                select.assert_called_once_with(device, Path("test.json"), "Portable")
+                self.assertEqual(json.loads(output.getvalue()), {"type": "selected", **selected})
+                self.assertNotIn(device["token"], output.getvalue())
+
+    def test_select_rejects_malformed_base64_before_selecting_a_device(self):
+        output = io.StringIO()
+        with (
+            patch(
+                "sys.argv", ["xiaomi_onboarding.py", "select", "--config", "test.json", "--mode", "Service"]
+            ),
+            patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(codecs.BOM_UTF8 + b"not!base64\n"))),
+            patch.object(ONBOARD, "select_device") as select,
+            redirect_stdout(output),
+        ):
+            self.assertEqual(ONBOARD.main(), 1)
+        select.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())["type"], "error")
+
     def test_qr_image_and_poll_may_use_xiaomi_account_frontend(self):
         login = SimpleNamespace(
             url="https://account.xiaomi.com/longPolling/loginUrl",

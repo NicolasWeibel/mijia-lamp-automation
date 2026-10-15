@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import codecs
 import contextlib
 import hashlib
 import ipaddress
@@ -456,7 +457,10 @@ def main() -> int:
             session.finish()
             _event("devices", devices=session.devices(regions))
         else:
-            device = json.loads(base64.b64decode(sys.stdin.readline().strip(), validate=True).decode("utf-8"))
+            # PowerShell's redirected StreamWriter can prepend a UTF-8 BOM.
+            # Decode bytes explicitly, independently of Python's console encoding.
+            encoded = sys.stdin.buffer.readline().removeprefix(codecs.BOM_UTF8).strip()
+            device = json.loads(base64.b64decode(encoded, validate=True).decode("utf-8"))
             _event("selected", **select_device(device, args.config, args.mode))
         return 0
     except Exception as exc:

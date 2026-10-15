@@ -247,21 +247,31 @@ if ($SelfTest) {
 
     if (-not (Test-Path -LiteralPath $Tool -PathType Leaf)) { throw (T 'msg_638c9fa1545d') }
     $python = Get-OnboardingPython
-    $probe = Start-OnboardingProcess $python "select" $ConfigPath $Mode
-    $form = New-ProgressForm
+    $previousInputEncoding = [Console]::InputEncoding
     try {
-        $probe.StandardInput.WriteLine("e30=") # Base64 of {}, without a token or network access.
-        $probe.StandardInput.Close()
-        try {
-            [void](Read-OnboardingEvent $probe $form.Form 10)
-            throw (T 'msg_1b9d048e884c')
-        } catch {
-            if ($_.Exception.Message -notmatch [regex]::Escape((T 'msg_70311df10079'))) { throw }
+        foreach ($withBom in @($false, $true)) {
+            # Process.StandardInput uses the console input encoding on .NET Framework.
+            # Exercise the real writer with and without its UTF-8 preamble.
+            [Console]::InputEncoding = New-Object Text.UTF8Encoding($withBom)
+            $probe = Start-OnboardingProcess $python "select" $ConfigPath $Mode
+            $form = New-ProgressForm
+            try {
+                $probe.StandardInput.WriteLine("e30=") # Base64 of {}, without a token or network access.
+                $probe.StandardInput.Close()
+                try {
+                    [void](Read-OnboardingEvent $probe $form.Form 10)
+                    throw (T 'msg_1b9d048e884c')
+                } catch {
+                    if ($_.Exception.Message -notmatch [regex]::Escape((T 'msg_70311df10079'))) { throw }
+                }
+            } finally {
+                if (-not $probe.HasExited) { $probe.Kill() }
+                $probe.Dispose()
+                $form.Form.Dispose()
+            }
         }
     } finally {
-        if (-not $probe.HasExited) { $probe.Kill() }
-        $probe.Dispose()
-        $form.Form.Dispose()
+        [Console]::InputEncoding = $previousInputEncoding
     }
     Write-Host (T 'msg_3d1114a6b1a8')
     return

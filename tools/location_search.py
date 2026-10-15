@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import codecs
 import json
 import math
 import sys
@@ -62,10 +63,12 @@ def search_locations(query: str) -> list[dict]:
 
 def main() -> int:
     try:
-        raw = sys.stdin.read(4096).strip()
-        if not raw.startswith("{"):
-            raw = base64.b64decode(raw, validate=True).decode("utf-8")
-        query = json.loads(raw)["query"]
+        # Read bytes to tolerate PowerShell's UTF-8 BOM without relying on
+        # the console's text encoding. Keep support for both input formats.
+        raw = sys.stdin.buffer.read(4096).removeprefix(codecs.BOM_UTF8).strip()
+        if not raw.startswith(b"{"):
+            raw = base64.b64decode(raw, validate=True)
+        query = json.loads(raw.decode("utf-8"))["query"]
         result = {"ok": True, "locations": search_locations(query)}
     except requests.RequestException:
         result = {"ok": False, "message": tr("msg_3d3b37d034c6")}

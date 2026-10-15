@@ -1,5 +1,10 @@
+import base64
+import codecs
 import importlib.util
+import io
+import json
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -17,6 +22,32 @@ class LocationTests(unittest.TestCase):
             "sys.modules", {"requests": SimpleNamespace(get=Mock(), RequestException=RuntimeError)}
         ):
             spec.loader.exec_module(cls.module)
+
+    def test_stdin_preserves_accented_cities_in_both_formats_with_or_without_bom(self):
+        raw = json.dumps({"query": "San Martín"}, ensure_ascii=False).encode("utf-8")
+        for payload in (raw, base64.b64encode(raw)):
+            for prefix in (b"", codecs.BOM_UTF8):
+                with self.subTest(payload=payload, prefix=prefix):
+                    output = io.StringIO()
+                    stdin = SimpleNamespace(buffer=io.BytesIO(prefix + payload + b"\r\n"))
+                    with (
+                        patch("sys.stdin", stdin),
+                        patch.object(self.module, "search_locations", return_value=[]) as search,
+                        redirect_stdout(output),
+                    ):
+                        self.assertEqual(self.module.main(), 0)
+                    search.assert_called_once_with("San Martín")
+                    self.assertEqual(json.loads(output.getvalue()), {"ok": True, "locations": []})
+
+    def test_invalid_base64_does_not_start_a_city_search(self):
+        with (
+            patch("sys.stdin", SimpleNamespace(buffer=io.BytesIO(codecs.BOM_UTF8 + b"not!base64"))),
+            patch.object(self.module, "search_locations") as search,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(self.module.main(), 1)
+        search.assert_not_called()
+        self.assertFalse(json.loads(output.getvalue())["ok"])
 
     def test_city_resolves_location_and_timezone_together(self):
         city = self.module.normalize_location(
