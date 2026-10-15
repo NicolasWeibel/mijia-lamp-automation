@@ -359,7 +359,7 @@ function Install-Service {
     Delete-ServiceDefinition
     & $Python $script --startup auto install
     if ($LASTEXITCODE -ne 0) { throw (T 'msg_802e26656fad' -Arguments @(($ServiceName))) }
-    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" start= delayed-auto | Out-Null
+    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" start= auto | Out-Null
     if ($LASTEXITCODE -ne 0) { throw (T 'msg_33772dcf2cd3') }
     & sc.exe sidtype $ServiceName unrestricted | Out-Null
     if ($LASTEXITCODE -ne 0) { throw (T 'msg_b93c92b55a42') }

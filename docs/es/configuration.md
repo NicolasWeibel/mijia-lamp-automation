@@ -114,7 +114,7 @@ Estos valores son intencionalmente pequeños: el objetivo es enviar OFF antes de
 
 Las pausas temporales están en **Más opciones → Pausar ajustes automáticos**, con **1 hora** y **Hasta el amanecer**. El submenú aclara que la pausa no enciende ni apaga la lámpara por sí sola.
 
-La primera fila muestra el modo actual, el tiempo restante de una pausa o acción manual, o la disponibilidad del programa. Los controles de la lámpara se habilitan cuando el runtime responde. Service tiene inicio automático retrasado: el icono puede aparecer antes de que el servicio esté listo.
+La primera fila muestra el modo actual, el tiempo restante de una pausa o acción manual, o la disponibilidad del programa. Los controles de la lámpara se habilitan cuando el runtime responde. Service usa inicio automático normal para responder durante el arranque, incluso antes de iniciar sesión si está configurado. El icono puede esperar brevemente al servicio, y el control de la lámpara requiere que la red local esté disponible.
 
 | Control | Comportamiento |
 | --- | --- |

@@ -114,7 +114,7 @@ These values are intentionally small: the goal is to send OFF before Windows rem
 
 Temporary pauses are grouped under **More options → Pause automatic adjustments**, with **For 1 hour** and **Until sunrise**. The submenu explains that pausing does not itself turn the lamp on or off.
 
-The first menu row reports the current mode, remaining manual/pause time, or runtime availability. Lamp commands become available after the runtime responds. Service uses delayed automatic startup; the tray can appear before the service is ready.
+The first menu row reports the current mode, remaining manual/pause time, or runtime availability. Lamp commands become available after the runtime responds. Service uses normal automatic startup so it can respond during boot, including before sign-in when configured. The tray may still briefly wait for the service, and lamp control requires the local network to be available.
 
 | Control | Behavior |
 | --- | --- |
