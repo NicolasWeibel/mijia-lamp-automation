@@ -156,6 +156,10 @@ jobs:
         shell: powershell
         run: ./scripts/test-settings-python.ps1
 
+      - name: Verify settings security descriptor preservation
+        shell: powershell
+        run: ./scripts/test-settings-acl.ps1
+
       - name: Exercise English and Spanish interfaces without installation
         shell: powershell
         run: |

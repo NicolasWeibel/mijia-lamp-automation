@@ -26,6 +26,7 @@ All notable changes are documented here. The project uses semantic versioning an
 
 ### Fixed
 
+- Settings saves copy the existing security descriptor to the replacement file before the atomic swap, preserving owner, group, and access permissions. Windows regression tests cover non-default groups and inherited/protected DACLs.
 - Start Service automatically without the delayed-start setting, reducing startup unavailability for tray controls and pre-sign-in lighting.
 - Settings prefer the configured PATH Python over the system launcher when no project runtime exists, keeping validation and city lookup in the environment containing the installed dependencies.
 - Settings validation reads Base64 as bytes, strips an optional UTF-8 BOM, and uses strict decoding independently of Python's console encoding. Regression tests cover accented cities, BOM input, UTF-8 mode, and invalid data.

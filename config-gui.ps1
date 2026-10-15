@@ -257,17 +257,22 @@ function Save-ConfigJson {
     if (($parentItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw (T 'msg_90b7f46b6b88')
     }
+    $existingAcl = $null
     if (Test-Path -LiteralPath $ConfigPath) {
         $item = Get-Item -LiteralPath $ConfigPath -Force
         if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or $item.PSIsContainer) {
             throw (T 'msg_b63ea195c9d1')
         }
+        $existingAcl = Get-Acl -LiteralPath $ConfigPath
     }
     $temporary = Join-Path $parent (".mijialamp-config-" + [Guid]::NewGuid().ToString("N") + ".tmp")
     $backup = Join-Path $parent (".mijialamp-config-" + [Guid]::NewGuid().ToString("N") + ".bak")
     try {
         [IO.File]::WriteAllText($temporary, $Json + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-        if (Test-Path -LiteralPath $ConfigPath -PathType Leaf) {
+        if ($existingAcl) {
+            # Replace preserves the destination DACL, but can retain the new
+            # file's owner/group. Copy the full descriptor before the swap.
+            Set-Acl -LiteralPath $temporary -AclObject $existingAcl
             [IO.File]::Replace($temporary, $ConfigPath, $backup)
         } else {
             [IO.File]::Move($temporary, $ConfigPath)
@@ -796,8 +801,9 @@ if ($SelfTest) {
         Save-ConfigJson $json
         $aclBefore = (Get-Acl -LiteralPath $ConfigPath).Sddl
         Save-ConfigJson $json
-        if ((Get-Acl -LiteralPath $ConfigPath).Sddl -ne $aclBefore) {
-            throw (T 'msg_ebe04ea4342a')
+        $aclAfter = (Get-Acl -LiteralPath $ConfigPath).Sddl
+        if ($aclAfter -ne $aclBefore) {
+            throw ((T 'msg_ebe04ea4342a') + " Before=$aclBefore After=$aclAfter")
         }
         $savedConfig = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
         if ($savedConfig.version -ne 3 -or $savedConfig.location_name -ne "San Martín · Mendoza") {
