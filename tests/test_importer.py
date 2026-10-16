@@ -1,6 +1,10 @@
 import importlib.util
+import io
+import sys
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
@@ -35,6 +39,26 @@ class ImporterTests(unittest.TestCase):
         data = {TEST_DID: {"token": "b" * 32, "local_ip": TEST_IP}}
         obj, _ = MOD.find_device(data, TEST_DID)
         self.assertEqual(obj["token"], "b" * 32)
+
+    def test_encrypted_source_is_rewrapped_without_showing_token(self):
+        secret = "d" * 32
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["import_mihome_token.py", "--encrypted-source", "staged.json", "--scope", "local-machine"],
+            ),
+            patch.object(MOD, "ensure_service_dirs"),
+            patch.object(MOD, "load_config", return_value={"device_id": TEST_DID}),
+            patch.object(MOD, "load_token", return_value=secret) as load,
+            patch.object(MOD, "store_token") as store,
+            redirect_stdout(io.StringIO()) as output,
+        ):
+            result = MOD.main()
+        self.assertEqual(result, 0)
+        load.assert_called_once_with(Path("staged.json"), expected_scope="local-machine")
+        store.assert_called_once_with(secret, scope="local-machine")
+        self.assertNotIn(secret, output.getvalue())
 
 
 if __name__ == "__main__":

@@ -1,23 +1,25 @@
-## Resumen
+## Summary
 
-<!-- Qué cambia y por qué. -->
+<!-- What changed and why? -->
 
-## Tipo de cambio
+## Type of change
 
 - [ ] Bug fix
 - [ ] Feature
 - [ ] Refactor
-- [ ] Seguridad
-- [ ] Documentación / tooling
+- [ ] Security
+- [ ] Documentation / tooling
 
-## Validación
+## Validation
 
 - [ ] `python -m unittest discover -s tests -p "test_*.py" -v`
 - [ ] `python scripts/check_repository.py`
-- [ ] PowerShell parsea sin errores (si aplica)
-- [ ] Probado en Windows con hardware real (si cambia integración Win32/miIO)
+- [ ] PowerShell parses without errors (if applicable)
+- [ ] Tested on Windows with real hardware (for Win32/miIO integration changes)
 
-## Seguridad y privacidad
+## Security and privacy
 
-- [ ] No incluye tokens, `config.json`, `mi-tokens.json`, logs privados ni datos de una instalación real.
-- [ ] Revisé el impacto sobre tareas `SYSTEM`, ACL, DPAPI y discovery (si aplica).
+- [ ] Includes no tokens, `config.json`, `mi-tokens.json`, private logs, or data from a real installation.
+- [ ] Reviewed impact on `SYSTEM` tasks, ACLs, DPAPI, and discovery (if applicable).
+
+Spanish pull requests are welcome. / Se aceptan pull requests en español.

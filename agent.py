@@ -2,17 +2,21 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
+import math
 import os
+import subprocess
 import threading
 import time
 import uuid
 from ctypes import wintypes
+from pathlib import Path
 
 from mijialamp.config import load_config
+from mijialamp.i18n import tr
 from mijialamp.ipc import IPCError, PipeClient
 from mijialamp.locking import FileLock
 from mijialamp.logging_setup import configure_logging
-from mijialamp.paths import AGENT_LOCK_PATH, CONFIG_PATH, LOG_DIR, ensure_agent_dirs
+from mijialamp.paths import AGENT_LOCK_PATH, CONFIG_PATH, LOG_DIR, ROOT, ensure_agent_dirs
 
 WM_POWERBROADCAST = 0x0218
 WM_WTSSESSION_CHANGE = 0x02B1
@@ -125,6 +129,49 @@ class TrayUI:
         self._poll_failures = 0
         self._last_poll_warning_at = 0.0
         self._service_down_notified = False
+        self._runtime_available: bool | None = None
+        self._last_state: dict = {}
+
+    def _manual_off_caption(self) -> str:
+        minutes = int(self.cfg.get("manual_off_override_minutes", 120))
+        if minutes <= 0:
+            return tr("tray.off_without_timer")
+        duration = f"{minutes // 60} h" if minutes % 60 == 0 else f"{minutes} min"
+        return tr("tray.off_for", duration)
+
+    def _menu_status(self) -> str:
+        if self._runtime_available is None:
+            return tr("tray.connecting", self.backend_label)
+        if not self._runtime_available:
+            return tr("tray.unavailable", self.backend_label)
+        state = self._last_state
+        if not state.get("automation_enabled", True):
+            return tr("tray.automation_disabled")
+        now = time.time()
+        until = float(state.get("automation_paused_until", 0) or 0)
+        if until < 0:
+            return tr("tray.paused_indefinitely")
+        if until > now:
+            return tr("tray.paused_remaining", math.ceil((until - now) / 60))
+        if state.get("manual_off_active"):
+            until = float(state.get("manual_off_until", 0) or 0)
+            if until <= 0:
+                return tr("tray.manual_off_indefinitely")
+            if until > now:
+                return tr("tray.manual_off_remaining", math.ceil((until - now) / 60))
+        if state.get("manual_day_active"):
+            hours = float(self.cfg.get("manual_day_override_max_hours", 5))
+            until = float(state.get("manual_day_started_at", 0) or 0) + hours * 3600
+            if hours <= 0:
+                return tr("tray.manual_on_indefinitely")
+            if until > now:
+                return tr("tray.manual_on_remaining", math.ceil((until - now) / 60))
+        if state.get("external_override_active"):
+            return tr("tray.external_change")
+        return tr("tray.automatic")
+
+    def _exit_caption(self) -> str:
+        return tr("tray.exit_portable" if self.backend_label == "Portable" else "tray.exit_service_agent")
 
     @staticmethod
     def _image(mode: str = "auto"):
@@ -169,24 +216,64 @@ class TrayUI:
         try:
             import pystray
         except Exception as exc:
-            self.log.warning("Tray deshabilitado: pystray no disponible: %s", exc)
+            self.log.warning(tr("msg_d1e825cdbec9"), exc)
             return
 
+        def available(_item):
+            return self._runtime_available is True
+
         menu = pystray.Menu(
-            pystray.MenuItem("Encender", lambda *_: self._call_async("manual-on")),
-            pystray.MenuItem("Apagar", lambda *_: self._call_async("manual-off")),
-            pystray.MenuItem("Automático", lambda *_: self._call_async("resume-automation")),
-            pystray.MenuItem("Pausar 1 hora", lambda *_: self._call_async("pause", seconds=3600)),
-            pystray.MenuItem("Pausar hasta mañana", lambda *_: self._call_async("pause-until-tomorrow")),
+            pystray.MenuItem(lambda _item: self._menu_status(), None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(
-                "Sincronizar",
-                lambda *_: self._call_async("sync", reason="tray-sync", force=True),
+                lambda _item: tr("tray.manual_on"),
+                lambda *_: self._call_async("manual-on"),
+                enabled=available,
             ),
-            pystray.MenuItem("Abrir logs", lambda *_: os.startfile(str(LOG_DIR))),
-            pystray.MenuItem("Abrir configuración", lambda *_: os.startfile(str(CONFIG_PATH))),
+            pystray.MenuItem(
+                lambda _item: self._manual_off_caption(),
+                lambda *_: self._call_async("manual-off"),
+                enabled=available,
+            ),
+            pystray.MenuItem(
+                lambda _item: tr("tray.return_automatic"),
+                lambda *_: self._call_async("resume-automation"),
+                enabled=available,
+            ),
+            pystray.MenuItem(
+                lambda _item: tr("tray.more_options"),
+                pystray.Menu(
+                    pystray.MenuItem(
+                        lambda _item: tr("tray.pause_adjustments"),
+                        pystray.Menu(
+                            pystray.MenuItem(lambda _item: tr("tray.pause_hint"), None, enabled=False),
+                            pystray.Menu.SEPARATOR,
+                            pystray.MenuItem(
+                                lambda _item: tr("tray.pause_hour"),
+                                lambda *_: self._call_async("pause", seconds=3600),
+                                enabled=available,
+                            ),
+                            pystray.MenuItem(
+                                lambda _item: tr("tray.pause_sunrise"),
+                                lambda *_: self._call_async("pause-until-tomorrow"),
+                                enabled=available,
+                            ),
+                        ),
+                        enabled=available,
+                    ),
+                ),
+                enabled=available,
+            ),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Salir del agente", lambda *_: self.on_exit()),
+            pystray.MenuItem(
+                lambda _item: tr("tray.sync_rules"),
+                lambda *_: self._call_async("sync", reason="tray-sync", force=True),
+                enabled=available,
+            ),
+            pystray.MenuItem(lambda _item: tr("msg_5ee58d2282ca"), lambda *_: os.startfile(str(LOG_DIR))),
+            pystray.MenuItem(lambda _item: tr("msg_371c2e776ca7"), lambda *_: self._open_config()),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(lambda _item: self._exit_caption(), lambda *_: self.on_exit()),
         )
         self.icon = pystray.Icon("MijiaLamp", self._image("auto"), "MijiaLamp", menu)
         try:
@@ -195,32 +282,78 @@ class TrayUI:
             threading.Thread(target=self.icon.run, name="MijiaLampTray", daemon=True).start()
         threading.Thread(target=self._poll, name="MijiaLampTrayStatus", daemon=True).start()
 
+    def _open_config(self):
+        editor = ROOT / "config-gui.ps1"
+        if not editor.is_file():
+            self.log.error(tr("msg_e99b82f0cfd0"), editor)
+            return
+        try:
+            powershell = (
+                Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
+                / "System32"
+                / "WindowsPowerShell"
+                / "v1.0"
+                / "powershell.exe"
+            )
+            subprocess.Popen(
+                [
+                    str(powershell),
+                    "-NoProfile",
+                    "-STA",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    str(editor),
+                    "-ConfigPath",
+                    str(CONFIG_PATH),
+                    "-Mode",
+                    self.backend_label,
+                ],
+                cwd=str(ROOT),
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except OSError as exc:
+            self.log.error(tr("msg_c3dc5f393a53"), exc)
+
     def _poll(self):
         while not self._stop.wait(5):
             if not self.icon:
                 return
             try:
                 result = self.client.request("status", timeout=2, physical=False)
+                self._runtime_available = True
                 if self._poll_failures:
-                    self.log.info("Tray recuperó comunicación con %s", self.backend_label)
+                    self.log.info(tr("msg_ac4325c5fb6f"), self.backend_label)
                 self._poll_failures = 0
                 self._service_down_notified = False
                 state = result.get("state", {})
+                self._last_state = dict(state)
+                with contextlib.suppress(Exception):
+                    self.icon.update_menu()
                 desired = result.get("desired", {})
                 physical = state.get("last_physical") or {}
                 paused = float(state.get("automation_paused_until", 0) or 0) != 0
                 err = state.get("last_error")
                 power = str(physical.get("power") or desired.get("power") or "?").lower()
-                title = f"MijiaLamp · {power.upper()}"
+                power_label = tr("tray." + power) if power in {"on", "off", "hold"} else "?"
+                title = f"MijiaLamp · {power_label}"
                 if power == "on":
                     if physical.get("kelvin"):
                         title += f" · {physical['kelvin']}K"
                     if physical.get("brightness") is not None:
                         title += f" · {physical['brightness']}%"
                 if desired.get("profile"):
-                    title += f" · {desired['profile']}"
+                    profile = str(desired["profile"])
+                    profile_label = (
+                        tr("profile." + profile)
+                        if profile in {"evening", "wind_down", "pre_sleep", "after_bedtime", "manual_day"}
+                        else profile
+                    )
+                    title += f" · {profile_label}"
                 if paused:
-                    title += " · PAUSADO"
+                    title += tr("msg_f600aa58675b")
                 self.icon.title = title[:127]
                 mode = "error" if err else ("paused" if paused else ("on" if power == "on" else "off"))
                 with contextlib.suppress(Exception):
@@ -234,17 +367,20 @@ class TrayUI:
                         if key != self._last_error_key:
                             self._last_error_key = key
                             self.icon.notify(
-                                str(err.get("message", "Error persistente")), "MijiaLamp necesita atención"
+                                str(err.get("message", tr("msg_744e06cc0b1d"))), tr("msg_927e186984d9")
                             )
             except Exception as exc:
+                self._runtime_available = False
+                with contextlib.suppress(Exception):
+                    self.icon.update_menu()
                 self._poll_failures += 1
                 now = time.monotonic()
                 if self._poll_failures == 1 or now - self._last_poll_warning_at >= 60:
                     self._last_poll_warning_at = now
-                    self.log.warning("Tray no puede consultar %s: %s", self.backend_label, exc)
+                    self.log.warning(tr("msg_c458c096d733"), self.backend_label, exc)
                 if self.icon:
                     try:
-                        self.icon.title = f"MijiaLamp · {self.backend_label.upper()} OFFLINE"
+                        self.icon.title = f"MijiaLamp · {self.backend_label.upper()} {tr('tray.offline')}"
                         self.icon.icon = self._image("error")
                         if (
                             bool(self.cfg.get("notifications_enabled", True))
@@ -253,8 +389,8 @@ class TrayUI:
                         ):
                             self._service_down_notified = True
                             self.icon.notify(
-                                f"{self.backend_label} no responde desde hace ~30 segundos.",
-                                "MijiaLamp necesita atención",
+                                tr("msg_3987079df8d4", self.backend_label),
+                                tr("msg_927e186984d9"),
                             )
                     except Exception:
                         # Tray backends are best-effort; file/Event Viewer logging remains authoritative.
@@ -278,7 +414,9 @@ class LampAgent:
         suspend_handler=None,
     ):
         ensure_agent_dirs()
-        self.cfg = cfg or load_config()
+        # The interactive user can read config.json, but service data is read-only.
+        # Only the service needs the discovered-IP cache.
+        self.cfg = cfg or load_config(include_device_cache=False)
         self.log = log or configure_logging("agent", self.cfg, console=False, event_log=True)
         self.client = client or PipeClient()
         self.backend_label = backend_label
@@ -305,7 +443,7 @@ class LampAgent:
             try:
                 func()
             except Exception as exc:
-                self.log.error("Acción async %s falló: %s", label, exc, exc_info=True)
+                self.log.error(tr("msg_701a400b1965"), label, exc, exc_info=True)
 
         threading.Thread(target=worker, name=f"MijiaLamp-{label}", daemon=True).start()
 
@@ -324,7 +462,7 @@ class LampAgent:
             self.last_display_state = state
             self.last_display_event_at = now
         if duplicate:
-            self.log.info("Evento display %s duplicado; coalescido", state)
+            self.log.info("Duplicate display event %s; coalesced", state)
         return duplicate
 
     def display_on(self, source: str):
@@ -344,7 +482,7 @@ class LampAgent:
         now = time.monotonic()
         with self.guard:
             if now < self.suppress_off_until:
-                self.log.info("Display OFF ignorado dentro del período de gracia")
+                self.log.info(tr("msg_347fcdeb94f6"))
                 return
             self.pending_off_generation += 1
             generation = self.pending_off_generation
@@ -374,7 +512,7 @@ class LampAgent:
             try:
                 self.suspend_handler()
             except Exception as exc:
-                self.log.warning("Suspend OFF crítico no pudo completarse: %s", exc)
+                self.log.warning(tr("msg_48f3d2b84424"), exc)
             return
 
         # Service mode has an independent SERVICE_CONTROL_POWEREVENT path. The agent's
@@ -389,7 +527,7 @@ class LampAgent:
                 source="interactive-agent",
             )
         except Exception as exc:
-            self.log.warning("Suspend OFF vía agente no pudo encolarse: %s", exc)
+            self.log.warning(tr("msg_9c9d7590fb90"), exc)
 
     def resume(self, automatic: bool):
         with self.guard:
@@ -485,14 +623,14 @@ class LampAgent:
                     user_presence=presence,
                 )
                 if self._heartbeat_failures:
-                    self.log.info("Heartbeat recuperó comunicación con MijiaLampService")
+                    self.log.info(tr("msg_5dcb03caaef3"))
                 self._heartbeat_failures = 0
             except Exception as exc:
                 # A service restart is expected to create a brief gap; log the first miss and
                 # then rate-limit to one warning per minute instead of hiding it or spamming.
                 self._heartbeat_failures += 1
                 if self._heartbeat_failures == 1 or self._heartbeat_failures % 4 == 0:
-                    self.log.warning("Heartbeat no pudo alcanzar el servicio: %s", exc)
+                    self.log.warning(tr("msg_ade87c1b2995"), exc)
 
     def request_exit(self):
         if self.hwnd:
@@ -539,11 +677,11 @@ class LampAgent:
 
     def run(self):
         if os.name != "nt":
-            raise RuntimeError("agent.py sólo está soportado en Windows")
+            raise RuntimeError(tr("msg_c518d6b12805"))
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
         wtsapi32 = ctypes.WinDLL("wtsapi32", use_last_error=True)
-        self.log.info("MijiaLamp agent v3 iniciando")
+        self.log.info("Starting MijiaLamp agent v3")
         WNDPROC = ctypes.WINFUNCTYPE(LRESULT, HWND, UINT, WPARAM, LPARAM)
 
         # Explicit prototypes are essential on 64-bit Windows: ctypes otherwise
@@ -609,7 +747,7 @@ class LampAgent:
         wtsapi32.WTSUnRegisterSessionNotification.restype = BOOL
 
         if bool(self.cfg.get("ignore_remote_sessions", True)) and user32.GetSystemMetrics(0x1000):
-            self.log.info("Sesión remota detectada; agente interactivo omitido por configuración")
+            self.log.info(tr("msg_720c02094d3c"))
             return
 
         def wndproc(hwnd, msg, wparam, lparam):
@@ -651,7 +789,7 @@ class LampAgent:
                     user32.PostQuitMessage(0)
                     return 0
             except Exception as exc:
-                self.log.error("Error procesando evento Windows: %s", exc, exc_info=True)
+                self.log.error("Error processing Windows event: %s", exc, exc_info=True)
             return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
         wndproc_ref = WNDPROC(wndproc)
@@ -663,10 +801,10 @@ class LampAgent:
         wc.lpszClassName = class_name
         atom = user32.RegisterClassW(ctypes.byref(wc))
         if not atom and ctypes.get_last_error() != 1410:
-            raise OSError(ctypes.get_last_error(), "RegisterClassW falló")
+            raise OSError(ctypes.get_last_error(), tr("msg_14b5779a6c3e"))
         hwnd = user32.CreateWindowExW(0, class_name, class_name, 0, 0, 0, 0, 0, 0, 0, hinst, None)
         if not hwnd:
-            raise OSError(ctypes.get_last_error(), "CreateWindowExW falló")
+            raise OSError(ctypes.get_last_error(), tr("msg_060bf74c046f"))
         self.hwnd = hwnd
 
         registrations = []
@@ -681,16 +819,16 @@ class LampAgent:
             if not handle:
                 error = ctypes.get_last_error()
                 if required:
-                    raise OSError(error, f"No pude registrar {guid_text}")
+                    raise OSError(error, tr("msg_e888678cbacd", guid_text))
                 self.log.warning(
-                    "User Presence no disponible (error=%s); continúo con Display + WTS",
+                    tr("msg_b138895214ed"),
                     error,
                 )
                 continue
             registrations.append((guid, handle))
 
         if not wtsapi32.WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION):
-            self.log.warning("WTSRegisterSessionNotification falló: %s", ctypes.get_last_error())
+            self.log.warning(tr("msg_2a56fa261289"), ctypes.get_last_error())
 
         self.tray.start()
         locked = self._initial_lock_state(user32)
@@ -727,22 +865,22 @@ class LampAgent:
             with contextlib.suppress(Exception):
                 user32.UnregisterPowerSettingNotification(handle)
         self.tray.stop()
-        self.log.info("MijiaLamp agent detenido")
+        self.log.info("MijiaLamp agent stopped")
 
 
 def main() -> int:
     ensure_agent_dirs()
-    cfg = load_config()
+    cfg = load_config(include_device_cache=False)
     log = configure_logging("agent", cfg, console=False, event_log=True)
     try:
         with FileLock(AGENT_LOCK_PATH, timeout=0.1):
-            LampAgent().run()
+            LampAgent(cfg=cfg, log=log).run()
         return 0
     except IPCError as exc:
-        log.error("El servicio no está disponible: %s", exc)
+        log.error(tr("msg_6d71f376101e"), exc)
         return 3
     except Exception as exc:
-        log.error("Agent terminó con error: %s", exc, exc_info=True)
+        log.error(tr("msg_d6235744565a"), exc, exc_info=True)
         return 1
 
 

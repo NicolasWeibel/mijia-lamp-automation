@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import contextlib
 
+from mijialamp.i18n import tr
 from mijialamp.secrets_store import (
     SCOPE_CURRENT_USER,
     SCOPE_LOCAL_MACHINE,
@@ -31,7 +32,7 @@ def migrate(path: Path, *, token_scope: str = SCOPE_LOCAL_MACHINE) -> tuple[bool
     with open(path, encoding="utf-8-sig") as fh:
         cfg = json.load(fh)
     if not isinstance(cfg, dict):
-        raise ValueError("config.json debe contener un objeto JSON")
+        raise ValueError(tr("msg_d476dab29bb2"))
 
     changed = False
     token_migrated = False
@@ -96,7 +97,7 @@ def migrate(path: Path, *, token_scope: str = SCOPE_LOCAL_MACHINE) -> tuple[bool
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Migra config legacy sin exponer secretos")
+    parser = argparse.ArgumentParser(description=tr("msg_7cb54972e248"))
     parser.add_argument("path", type=Path)
     parser.add_argument(
         "--scope",
@@ -107,11 +108,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     changed, token_migrated = migrate(args.path, token_scope=args.scope)
     if token_migrated:
-        print("Token legacy migrado a DPAPI; su valor no se mostró.")
+        print(tr("msg_7368dc49a823"))
     if changed:
         print("config.json migrado a esquema v3 y saneado.")
     else:
-        print("config.json no necesitó migración sensible.")
+        print(tr("msg_823489bdbb55"))
     return 0
 
 

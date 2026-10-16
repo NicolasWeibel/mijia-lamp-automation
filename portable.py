@@ -7,6 +7,7 @@ import threading
 from agent import LampAgent
 from mijialamp.config import load_config
 from mijialamp.controller import LampController
+from mijialamp.i18n import tr
 from mijialamp.ipc import PORTABLE_PIPE_NAME, PipeClient, PipeServer
 from mijialamp.locking import FileLock
 from mijialamp.logging_setup import configure_logging
@@ -17,7 +18,7 @@ from mijialamp.service_core import ServiceCore
 
 def _current_user_sid() -> str:
     if os.name != "nt":
-        raise RuntimeError("MijiaLamp Portable sólo funciona en Windows")
+        raise RuntimeError(tr("msg_b13a96bb555c"))
     import win32api
     import win32con
     import win32security
@@ -29,7 +30,7 @@ def _current_user_sid() -> str:
 
 def main() -> int:
     if os.name != "nt":
-        print("MijiaLamp Portable sólo puede ejecutarse en Windows.", file=sys.stderr)
+        print(tr("msg_43ac4aeeafe9"), file=sys.stderr)
         return 2
 
     # In portable mode these directories live beside the extracted application and are
@@ -82,10 +83,10 @@ def main() -> int:
                 pipe.stop()
                 core.stop()
                 pipe_thread.join(timeout=1.5)
-                log.info("MijiaLamp Portable runtime detenido")
+                log.info("MijiaLamp Portable runtime stopped")
         return 0
     except Exception as exc:
-        log.error("Portable runtime terminó con error: %s", exc, exc_info=True)
+        log.error(tr("msg_6c5a9a845d3f"), exc, exc_info=True)
         return 1
 
 

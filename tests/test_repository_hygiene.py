@@ -1,14 +1,25 @@
 import json
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.check_repository import check_hygiene
+from scripts.check_repository import _project_version, check_hygiene
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class RepositoryHygieneTests(unittest.TestCase):
+    def test_package_metadata_follows_a_change_to_the_canonical_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "mijialamp").mkdir()
+            (root / "pyproject.toml").write_bytes((ROOT / "pyproject.toml").read_bytes())
+            source = root / "mijialamp" / "__init__.py"
+            source.write_text('__version__ = "9.8.7"\n', encoding="utf-8")
+            with patch("scripts.check_repository.ROOT", root):
+                self.assertEqual(_project_version(), "9.8.7")
+
     def test_release_tag_must_match_project_version(self):
         with patch.dict("os.environ", {"GITHUB_REF": "refs/tags/v0.0.0"}), self.assertRaises(SystemExit):
             check_hygiene()
@@ -26,6 +37,13 @@ class RepositoryHygieneTests(unittest.TestCase):
         text = (ROOT / ".gitignore").read_text(encoding="utf-8")
         for entry in ("config.json", "secrets/", "data/", "logs/", "mi-tokens.json"):
             self.assertIn(entry, text)
+
+    def test_windows_powershell_scripts_with_accents_have_utf8_bom(self):
+        scripts = (*ROOT.glob("*.ps1"), *(ROOT / "scripts").glob("*.ps1"))
+        for path in scripts:
+            raw = path.read_bytes()
+            if any(value >= 128 for value in raw):
+                self.assertTrue(raw.startswith(b"\xef\xbb\xbf"), path.name)
 
     def test_agent_does_not_import_device_or_secret_layers(self):
         text = (ROOT / "agent.py").read_text(encoding="utf-8")

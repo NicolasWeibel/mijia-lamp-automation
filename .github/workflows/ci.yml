@@ -142,15 +142,36 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install --require-hashes --only-binary=:all: -r requirements.lock.txt -r requirements.windows.lock.txt
-          if ($LASTEXITCODE -ne 0) { throw "No se pudieron instalar las dependencias verificadas" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install verified dependencies" }
           python -m pip install --require-hashes --only-binary=:all: --no-deps -r requirements.miio.lock.txt
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar python-miio verificado" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install verified python-miio" }
           python -m pip install --no-deps -e .
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar el proyecto" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install the project" }
 
       - name: Import smoke test
         run: |
           python -c "from miio import Device; import win32serviceutil, pystray, PIL; import service, agent; from mijialamp.controller import LampController; print('runtime imports: OK')"
+
+      - name: Verify settings Python interpreter selection
+        shell: powershell
+        run: ./scripts/test-settings-python.ps1
+
+      - name: Verify settings security descriptor preservation
+        shell: powershell
+        run: ./scripts/test-settings-acl.ps1 -InterfaceTest
+
+      - name: Exercise English and Spanish interfaces without installation
+        shell: powershell
+        run: |
+          foreach ($language in @('en', 'es')) {
+            $env:MIJIALAMP_LANGUAGE = $language
+            ./config-gui.ps1 -SelfTest -Language $language
+            if ($LASTEXITCODE -ne 0) { throw "Settings interface failed: $language" }
+            ./setup-gui.ps1 -SelfTest -Language $language
+            if ($LASTEXITCODE -ne 0) { throw "Setup interface failed: $language" }
+            ./onboarding-gui.ps1 -SelfTest -ConfigPath (Join-Path $env:RUNNER_TEMP 'mijialamp-onboarding-test.json')
+            if ($LASTEXITCODE -ne 0) { throw "Onboarding interface failed: $language" }
+          }
 
   dependency-audit:
     name: Dependency audit
@@ -173,7 +194,7 @@ jobs:
         run: |
           $plain = Join-Path $env:RUNNER_TEMP "mijialamp-audit-requirements.txt"
           python scripts/verify_dependency_pins.py --plain-output $plain
-          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          if ($LASTEXITCODE -ne 0) { throw "Invalid dependency locks" }
           python -m pip_audit -r $plain --no-deps --disable-pip --progress-spinner=off
-          if ($LASTEXITCODE -ne 0) { throw "La auditoría encontró dependencias vulnerables" }
+          if ($LASTEXITCODE -ne 0) { throw "The audit found vulnerable dependencies" }
           Remove-Item -LiteralPath $plain

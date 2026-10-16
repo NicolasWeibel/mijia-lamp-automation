@@ -28,11 +28,11 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         run: |
-          if ((git cat-file -t $env:GITHUB_REF) -ne 'tag') { throw "La release requiere un tag anotado." }
+          if ((git cat-file -t $env:GITHUB_REF) -ne 'tag') { throw "A release requires an annotated tag." }
           git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar main." }
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch main." }
           git merge-base --is-ancestor HEAD refs/remotes/origin/main
-          if ($LASTEXITCODE -ne 0) { throw "El tag no apunta a un commit incluido en main." }
+          if ($LASTEXITCODE -ne 0) { throw "The tag does not point to a commit on main." }
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -62,9 +62,9 @@ jobs:
         run: |
           $plain = Join-Path $env:RUNNER_TEMP "mijialamp-audit-requirements.txt"
           python scripts/verify_dependency_pins.py --plain-output $plain
-          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          if ($LASTEXITCODE -ne 0) { throw "Invalid dependency locks" }
           python -m pip_audit -r $plain --no-deps --disable-pip --progress-spinner=off
-          if ($LASTEXITCODE -ne 0) { throw "La auditoría encontró dependencias vulnerables" }
+          if ($LASTEXITCODE -ne 0) { throw "The audit found vulnerable dependencies" }
           Remove-Item -LiteralPath $plain
 
       - name: Check PowerShell syntax
@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
         run: ./prepare-service-runtime.ps1 -Recreate -AllowElevatedForCI
 
-      - name: Build Portable + Service ZIPs
+      - name: Build Setup + Portable + Service ZIPs
         shell: pwsh
         run: ./scripts/build-release.ps1 -IncludePreparedRuntime
 
@@ -86,13 +86,13 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install "cyclonedx-bom==7.3.1"
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar CycloneDX" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install CycloneDX" }
           New-Item -ItemType Directory -Force release | Out-Null
           $combined = "release/requirements-sbom.txt"
           python scripts/verify_dependency_pins.py --plain-output $combined
-          if ($LASTEXITCODE -ne 0) { throw "Locks inválidos" }
+          if ($LASTEXITCODE -ne 0) { throw "Invalid dependency locks" }
           cyclonedx-py requirements $combined --output-format JSON --output-file "release/MijiaLamp-${env:RELEASE_TAG}.sbom.cdx.json"
-          if ($LASTEXITCODE -ne 0) { throw "No se pudo generar el SBOM" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not generate the SBOM" }
           Remove-Item -LiteralPath $combined
 
       - name: Build dependency wheel manifest

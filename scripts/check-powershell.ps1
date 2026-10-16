@@ -6,14 +6,14 @@ Get-ChildItem -Path $Root -Recurse -File -Filter "*.ps1" |
     Where-Object { $_.FullName -notmatch '[\\/](\.venv|release)[\\/]' } |
     ForEach-Object {
         $tokens = $null
-        $errors = $null
+        $parseErrors = $null
         [void][System.Management.Automation.Language.Parser]::ParseFile(
             $_.FullName,
             [ref]$tokens,
-            [ref]$errors
+            [ref]$parseErrors
         )
-        foreach ($error in $errors) {
-            $ErrorsFound += "{0}:{1}:{2}: {3}" -f $_.FullName, $error.Extent.StartLineNumber, $error.Extent.StartColumnNumber, $error.Message
+        foreach ($parseError in $parseErrors) {
+            $ErrorsFound += "{0}:{1}:{2}: {3}" -f $_.FullName, $parseError.Extent.StartLineNumber, $parseError.Extent.StartColumnNumber, $parseError.Message
         }
     }
 

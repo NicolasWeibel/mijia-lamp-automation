@@ -17,11 +17,10 @@ FORBIDDEN_ROOT_PATHS = (
     ROOT / "secrets",
     ROOT / "data",
     ROOT / "logs",
-    ROOT / "prepared-runtime",
-    ROOT / "wheelhouse",
 )
 REQUIRED_PUBLIC_FILES = (
     "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
     "pyproject.toml",
     "config.example.json",
     "config.schema.json",
@@ -30,6 +29,17 @@ REQUIRED_PUBLIC_FILES = (
     "agent.py",
     "portable.py",
     "setup-portable.ps1",
+    "setup-gui.cmd",
+    "setup-gui.vbs",
+    "setup-gui.ps1",
+    "onboarding-gui.ps1",
+    "config-gui.ps1",
+    "tools/validate_config.py",
+    "i18n.ps1",
+    "version.ps1",
+    "README.es.md",
+    "mijialamp/locales/en.json",
+    "mijialamp/locales/es.json",
     "prepare-service-runtime.ps1",
     "security-check.ps1",
     "SECURITY.md",
@@ -40,12 +50,14 @@ TOKEN_LIKE = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32}(?![0-9a-f])")
 TEXT_SUFFIXES = {".py", ".ps1", ".cmd", ".json", ".md", ".toml", ".yml", ".yaml", ".txt"}
 PROJECT_VERSION_RE = re.compile(r'^version\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
 PACKAGE_VERSION_RE = re.compile(r'^__version__\s*=\s*"([^"]+)"\s*$', re.MULTILINE)
-VERSIONED_SCRIPTS = {
-    "install.ps1": r'^\$ProjectVersion\s*=\s*"([^"]+)"',
-    "prepare-service-runtime.ps1": r'^\s*project_version\s*=\s*"([^"]+)"',
-    "setup-portable.ps1": r'\$manifest\.project_version\s*-ne\s*"([^"]+)"',
-    "scripts/build-dependency-manifest.ps1": r'\$manifest\.project_version\s*-ne\s*"([^"]+)"',
-}
+VERSIONED_SCRIPTS = (
+    "install.ps1",
+    "prepare-service-runtime.ps1",
+    "setup-portable.ps1",
+    "setup-gui.ps1",
+    "scripts/build-release.ps1",
+    "scripts/build-dependency-manifest.ps1",
+)
 
 
 def fail(message: str) -> None:
@@ -55,17 +67,25 @@ def fail(message: str) -> None:
 
 def _project_version() -> str:
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-    match = PROJECT_VERSION_RE.search(text)
-    if not match:
-        fail("pyproject.toml no contiene project.version legible")
-    return match.group(1)
+    sections = dict(re.findall(r"(?ms)^\[([^\]]+)\]\s*\n(.*?)(?=^\[|\Z)", text))
+    project = sections.get("project", "")
+    if PROJECT_VERSION_RE.search(project) or not re.search(
+        r'^dynamic\s*=\s*\[\s*"version"\s*\]\s*$', project, re.MULTILINE
+    ):
+        fail("pyproject.toml must read the canonical version dynamically")
+    dynamic = sections.get("tool.setuptools.dynamic", "")
+    if not re.search(
+        r'^version\s*=\s*\{\s*attr\s*=\s*"mijialamp\.__version__"\s*\}\s*$', dynamic, re.MULTILINE
+    ):
+        fail("setuptools must read version from mijialamp.__version__")
+    return _package_version()
 
 
 def _package_version() -> str:
     text = (ROOT / "mijialamp" / "__init__.py").read_text(encoding="utf-8")
     match = PACKAGE_VERSION_RE.search(text)
     if not match:
-        fail("mijialamp/__init__.py no contiene __version__ legible")
+        fail("mijialamp/__init__.py does not contain a readable __version__")
     return match.group(1)
 
 
@@ -79,20 +99,16 @@ def check_hygiene() -> None:
             fail(f"required public file is missing: {name}")
 
     project_version = _project_version()
-    package_version = _package_version()
-    if project_version != package_version:
-        fail(f"version mismatch: pyproject={project_version}, package={package_version}")
-    for name, pattern in VERSIONED_SCRIPTS.items():
+    for name in VERSIONED_SCRIPTS:
         script = (ROOT / name).read_text(encoding="utf-8")
-        match = re.search(pattern, script, re.MULTILINE)
-        if not match or match.group(1) != project_version:
-            fail(f"version mismatch in {name}: expected {project_version}")
+        if "Get-MijiaLampVersion" not in script or re.search(r"[\"'][0-9]+\.[0-9]+\.[0-9]+[\"']", script):
+            fail(f"{name} must use version.ps1 instead of a fixed project version")
     git_ref = os.environ.get("GITHUB_REF", "")
     if git_ref.startswith("refs/tags/") and git_ref.removeprefix("refs/tags/") != f"v{project_version}":
         fail(f"release tag {git_ref!r} does not match project version v{project_version}")
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
     if f"## [{project_version}]" not in changelog:
-        fail(f"CHANGELOG.md no contiene una entrada para {project_version}")
+        fail(f"CHANGELOG.md does not contain an entry for {project_version}")
 
     example = ROOT / "config.example.json"
     with example.open("r", encoding="utf-8") as fh:
@@ -119,7 +135,15 @@ def check_hygiene() -> None:
         fail("config.example.json keys missing from schema: " + ", ".join(missing_schema))
 
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
-    for required in ("config.json", "secrets/", "data/", "logs/", "mi-tokens.json", "prepared-runtime/"):
+    for required in (
+        "config.json",
+        "secrets/",
+        "data/",
+        "logs/",
+        "mi-tokens.json",
+        "prepared-runtime/",
+        "wheelhouse/",
+    ):
         if required not in gitignore:
             fail(f".gitignore does not protect {required}")
 
@@ -128,7 +152,10 @@ def check_hygiene() -> None:
     for path in ROOT.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
-        if any(part in {".venv", ".git", "release", "__pycache__"} for part in path.parts):
+        if any(
+            part in {".venv", ".git", "release", "prepared-runtime", "wheelhouse", "__pycache__"}
+            for part in path.parts
+        ):
             continue
         try:
             text = path.read_text(encoding="utf-8")

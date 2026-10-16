@@ -37,6 +37,13 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(desired.power, "on")
         self.assertIsNotNone(desired.profile)
 
+    def test_prelogin_console_display_follows_screen_at_night(self):
+        cfg = {**self.cfg, "off_on_session_lock": False, "respect_user_presence": False}
+        state = self.state(session_locked=None, user_presence=None)
+        self.assertEqual(calculate_desired(cfg, state, night_now=True).power, "on")
+        state["display_on"] = False
+        self.assertEqual(calculate_desired(cfg, state, night_now=True).power, "off")
+
     def test_manual_day_allows_day_on(self):
         desired = calculate_desired(
             self.cfg,

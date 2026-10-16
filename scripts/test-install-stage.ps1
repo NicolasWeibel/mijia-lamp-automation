@@ -1,3 +1,7 @@
+﻿. (Join-Path (Split-Path -Parent $PSScriptRoot) 'i18n.ps1')
+. (Join-Path (Split-Path -Parent $PSScriptRoot) 'version.ps1')
+$env:MIJIALAMP_LANGUAGE = 'es'
+Initialize-MijiaLampLanguage -Language es
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $installer = Join-Path $root "install.ps1"
@@ -5,6 +9,11 @@ $tokens = $null
 $errors = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($installer, [ref]$tokens, [ref]$errors)
 if ($errors.Count -gt 0) { throw "install.ps1 contiene errores de sintaxis" }
+$progressFunction = $ast.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Write-InstallProgress'
+}, $false) | Select-Object -First 1
+. ([scriptblock]::Create($progressFunction.Extent.Text))
 $verifyFunction = $ast.FindAll({
     param($node)
     $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
@@ -35,10 +44,14 @@ try { Assert-OfficialInstallDir } catch { $rejected = $_.Exception.Message -like
 if (-not $rejected) { throw "Se aceptó una ruta de Service modificable por el usuario" }
 $rejected = $false
 try { & (Join-Path $root "uninstall.ps1") -InstallDir $InstallDir *> $null }
-catch { $rejected = $_.Exception.Message -like "*sólo puede desinstalarse*" }
+catch { $rejected = $_.Exception.Message -like "*can only be uninstalled*" }
 if (-not $rejected) { throw "La desinstalación aceptó una ruta arbitraria" }
 
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) "mijialamp-stage-$([Guid]::NewGuid().ToString('N'))"
+$tempBase = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\')
+if (-not [IO.Path]::GetFullPath($testRoot).StartsWith($tempBase + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Ruta temporal de prueba insegura."
+}
 $runtime = Join-Path $testRoot "runtime"
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 try {
@@ -67,12 +80,13 @@ try {
     $SourceRoot = Join-Path $testRoot "source-check"
     $PreparedPython = Join-Path $SourceRoot "prepared-runtime\python"
     $ManifestPath = Join-Path $SourceRoot "prepared-runtime\manifest.json"
-    $ProjectVersion = "3.1.3"
+    $ProjectVersion = Get-MijiaLampVersion
     New-Item -ItemType Directory -Path $PreparedPython -Force | Out-Null
     $preparedExe = Join-Path $PreparedPython "python.exe"
     Set-Content -LiteralPath $preparedExe -Value "runtime fixture"
     $manifest = @{
         project_version = $ProjectVersion
+        runtime_isolation = "python-dll-pth-v1"
         runtime_files = @(@{
             path = "python.exe"
             sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $preparedExe).Hash.ToLowerInvariant()

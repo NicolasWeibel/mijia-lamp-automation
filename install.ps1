@@ -1,14 +1,20 @@
-param(
+﻿param(
     [string]$InstallDir = [IO.Path]::Combine([Environment]::GetFolderPath("CommonApplicationData"), "MijiaLamp"),
     [string]$ConfigPath = "",
     [string]$InteractiveUser = "",
-    [switch]$EnableAutomation
+    [string]$EncryptedTokenSource = "",
+    [switch]$ShowTray,
+    [switch]$EnableAutomation,
+    [switch]$GuiProgress
 )
 
+. (Join-Path $PSScriptRoot 'i18n.ps1')
+. (Join-Path $PSScriptRoot 'version.ps1')
+Initialize-MijiaLampLanguage -ConfigPath $ConfigPath
 $ErrorActionPreference = "Stop"
 $SourceRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $ServiceName = "MijiaLampService"
-$ProjectVersion = "3.1.3"
+$ProjectVersion = Get-MijiaLampVersion
 $PreparedRoot = Join-Path $SourceRoot "prepared-runtime"
 $ManifestPath = Join-Path $PreparedRoot "manifest.json"
 $PreparedPython = Join-Path $PreparedRoot "python"
@@ -19,12 +25,16 @@ $PreparedManifest = $null
 $StagingCreated = $false
 $OldAutomationStopped = $false
 
+function Write-InstallProgress([int]$Percent, [string]$Stage) {
+    if ($GuiProgress) { Write-Host "[MijiaLamp:progress:$Percent] $Stage" }
+}
+
 function Assert-OfficialInstallDir {
     $expected = Join-Path ([Environment]::GetFolderPath("CommonApplicationData")) "MijiaLamp"
     $actualPath = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
     $expectedPath = [IO.Path]::GetFullPath($expected).TrimEnd('\')
     if ($actualPath -ine $expectedPath) {
-        throw "Por seguridad, Service sólo puede instalarse en $expectedPath."
+        throw (T 'msg_fcf42df1f1fc' -Arguments @(($expectedPath)))
     }
 }
 
@@ -32,7 +42,7 @@ function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw "Abrí PowerShell como Administrador y ejecutá install.ps1 nuevamente."
+        throw (T 'msg_35e16243f665')
     }
 }
 
@@ -42,12 +52,12 @@ function Assert-PrivateDirectory {
     $system = [Security.Principal.SecurityIdentifier]::new("S-1-5-18")
     $item = Get-Item -LiteralPath $Path -Force
     if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "No es un directorio privado normal: $Path"
+        throw (T 'msg_38012655b200' -Arguments @(($Path)))
     }
     $actualAcl = Get-Acl -LiteralPath $Path
     if ($actualAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $administrators.Value -or
         -not $actualAcl.AreAccessRulesProtected) {
-        throw "Directorio sin propietario/ACL protegidos: $Path"
+        throw (T 'msg_fb084559c6d3' -Arguments @(($Path)))
     }
     $allowed = @($administrators.Value, $system.Value)
     $found = @()
@@ -55,12 +65,12 @@ function Assert-PrivateDirectory {
         $sid = $entry.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
         if ($entry.AccessControlType -ne [Security.AccessControl.AccessControlType]::Allow -or
             $sid -notin $allowed) {
-            throw "Directorio contiene una ACE inesperada: $sid"
+            throw (T 'msg_5f97399e6471' -Arguments @(($sid)))
         }
         $found += $sid
     }
     if (@($found | Sort-Object -Unique).Count -ne 2) {
-        throw "Directorio no concede acceso a Administradores y SYSTEM: $Path"
+        throw (T 'msg_9ae22b63f8f6' -Arguments @(($Path)))
     }
 }
 
@@ -99,7 +109,7 @@ function New-PrivateDirectory {
 function Invoke-CheckedIcacls {
     param([string]$Path, [string[]]$AclArguments)
     & icacls.exe $Path @AclArguments | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No pude aplicar ACL segura: $Path" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_cd22448b907f' -Arguments @(($Path))) }
 }
 
 function Write-Utf8NoBom {
@@ -123,87 +133,95 @@ function Resolve-InteractiveIdentity {
     if (-not $name) {
         try { $name = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).UserName } catch {}
     }
-    if (-not $name) { throw "No pude detectar el usuario de escritorio. Usá -InteractiveUser DOMINIO\Usuario." }
+    if (-not $name) { throw (T 'msg_78478b3a5111') }
     try {
         $account = New-Object Security.Principal.NTAccount($name)
         $sid = $account.Translate([Security.Principal.SecurityIdentifier]).Value
     } catch {
-        throw "No pude resolver el usuario interactivo '$name'. Usá -InteractiveUser DOMINIO\Usuario."
+        throw (T 'msg_ddb968c256ec' -Arguments @(($name)))
     }
     return @{ Name = $name; Sid = $sid }
 }
 
 function Verify-PreparedRuntime {
     if (!(Test-Path $ManifestPath) -or !(Test-Path (Join-Path $PreparedPython "python.exe"))) {
-        throw "Falta prepared-runtime. Cerrá esta consola elevada, ejecutá .\prepare-service-runtime.ps1 como usuario normal y luego volvé a ejecutar install.ps1 como Administrador."
+        throw (T 'msg_dd686e55e770')
     }
     $manifestItem = Get-Item -LiteralPath $ManifestPath -Force
-    if (($manifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "manifest.json no puede ser reparse point" }
+    if (($manifestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw (T 'msg_b7e7c73bb638') }
     $reparse = @(Get-ChildItem -LiteralPath $PreparedPython -Force -Recurse -ErrorAction Stop | Where-Object { ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 })
-    if ($reparse.Count -gt 0) { throw "prepared-runtime contiene reparse points; volvé a prepararlo desde una carpeta normal." }
+    if ($reparse.Count -gt 0) { throw (T 'msg_0709f12c57a4') }
     $manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
     $script:PreparedManifest = $manifest
     if ([string]$manifest.project_version -ne $ProjectVersion) {
         throw "prepared-runtime corresponde a v$($manifest.project_version), pero este instalador es v$ProjectVersion."
     }
+    if ([string]$manifest.runtime_isolation -ne "python-dll-pth-v1") {
+        throw (T 'msg_50cf7b23c8d6')
+    }
     $expected = @{}
+    $verifiedCount = 0
     foreach ($entry in $manifest.runtime_files) {
         $rel = [string]$entry.path
-        if (-not $rel -or $rel.Contains("..") -or [IO.Path]::IsPathRooted($rel)) { throw "Manifest contiene ruta insegura: $rel" }
+        if (-not $rel -or $rel.Contains("..") -or [IO.Path]::IsPathRooted($rel)) { throw (T 'msg_046facbb7d60' -Arguments @(($rel))) }
         $full = Join-Path $PreparedPython ($rel.Replace('/', '\'))
-        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw "Runtime preparado incompleto: $rel" }
+        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw (T 'msg_cd19bafbf2a7' -Arguments @(($rel))) }
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
-        if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw "Hash inválido en runtime preparado: $rel" }
+        if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw (T 'msg_994a0eddc03d' -Arguments @(($rel))) }
         $expected[$rel.ToLowerInvariant()] = $true
+        $verifiedCount++
+        if ($verifiedCount % 100 -eq 0 -or $verifiedCount -eq $manifest.runtime_files.Count) {
+            Write-InstallProgress ([int](15 * $verifiedCount / $manifest.runtime_files.Count)) (T 'msg_d0eb49810648')
+        }
     }
     $actual = @(Get-ChildItem -Path $PreparedPython -File -Recurse | ForEach-Object {
         $_.FullName.Substring((Resolve-Path $PreparedPython).Path.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
     })
-    if ($actual.Count -ne $expected.Count) { throw "Runtime preparado contiene archivos no manifestados o faltantes." }
-    foreach ($rel in $actual) { if (-not $expected.ContainsKey($rel)) { throw "Archivo no manifestado en runtime preparado: $rel" } }
+    if ($actual.Count -ne $expected.Count) { throw (T 'msg_8b7b34ce0e78') }
+    foreach ($rel in $actual) { if (-not $expected.ContainsKey($rel)) { throw (T 'msg_a3e5479ec449' -Arguments @(($rel))) } }
 
     $sourceExpected = @{}
     foreach ($entry in $manifest.source_files) {
         $rel = [string]$entry.path
-        if (-not $rel -or $rel.Contains("..") -or [IO.Path]::IsPathRooted($rel)) { throw "Manifest source contiene ruta insegura: $rel" }
+        if (-not $rel -or $rel.Contains("..") -or [IO.Path]::IsPathRooted($rel)) { throw (T 'msg_5036d63555a8' -Arguments @(($rel))) }
         $sourceExpected[$rel.ToLowerInvariant()] = $true
         $full = Join-Path $SourceRoot ($rel.Replace('/', '\'))
-        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw "Archivo fuente preparado faltante: $rel" }
+        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw (T 'msg_7f00fed0e6c8' -Arguments @(($rel))) }
         $item = Get-Item -LiteralPath $full -Force
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Source manifestado no puede ser reparse point: $rel" }
+        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw (T 'msg_fe1c44c3e146' -Arguments @(($rel))) }
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
         if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) {
-            throw "El source cambió después de preparar el runtime: $rel. Volvé a ejecutar prepare-service-runtime.ps1."
+            throw (T 'msg_7af85f6d90b3' -Arguments @(($rel)))
         }
     }
     if (-not $sourceExpected.ContainsKey("install.ps1")) {
-        throw "Manifest source no incluye install.ps1; no ejecuto un instalador elevado sin verificar."
+        throw (T 'msg_87eac2f01935')
     }
-    Write-Host "Runtime + source verificados; fase elevada offline." -ForegroundColor Green
+    Write-Host (T 'msg_9dea9351ca50') -ForegroundColor Green
 }
 
 
 function Verify-StagingAgainstPreparedManifest {
     param([string]$StageRoot)
-    if (-not $script:PreparedManifest) { throw "Prepared manifest no está cargado en memoria" }
+    if (-not $script:PreparedManifest) { throw (T 'msg_eba4751ff7af') }
 
     $RuntimeRoot = Join-Path $StageRoot "runtime"
     $runtimeExpected = @{}
     foreach ($entry in $script:PreparedManifest.runtime_files) {
         $rel = [string]$entry.path
         $full = Join-Path $RuntimeRoot ($rel.Replace('/', '\'))
-        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw "Staging runtime incompleto: $rel" }
+        if (!(Test-Path -LiteralPath $full -PathType Leaf)) { throw (T 'msg_172b95618f17' -Arguments @(($rel))) }
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
-        if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw "TOCTOU/hash inválido tras copiar runtime: $rel" }
+        if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw (T 'msg_bd62f917fbcc' -Arguments @(($rel))) }
         $runtimeExpected[$rel.ToLowerInvariant()] = $true
     }
     $runtimeBase = (Resolve-Path $RuntimeRoot).Path
     $runtimeActual = @(Get-ChildItem -Path $RuntimeRoot -File -Recurse | ForEach-Object {
         $_.FullName.Substring($runtimeBase.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
     })
-    if ($runtimeActual.Count -ne $runtimeExpected.Count) { throw "TOCTOU: staging runtime contiene archivos extra o faltantes." }
+    if ($runtimeActual.Count -ne $runtimeExpected.Count) { throw (T 'msg_43b97560fa5f') }
     foreach ($rel in $runtimeActual) {
-        if (-not $runtimeExpected.ContainsKey($rel)) { throw "TOCTOU: archivo runtime no manifestado tras copia: $rel" }
+        if (-not $runtimeExpected.ContainsKey($rel)) { throw (T 'msg_c77972b0edf1' -Arguments @(($rel))) }
     }
 
     $sourceExpected = @{}
@@ -214,7 +232,7 @@ function Verify-StagingAgainstPreparedManifest {
         # If it is part of the installed image, it must still match the hash captured before elevation.
         if (Test-Path -LiteralPath $full -PathType Leaf) {
             $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $full).Hash.ToLowerInvariant()
-            if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw "TOCTOU/hash inválido tras copiar source: $rel" }
+            if ($hash -ne ([string]$entry.sha256).ToLowerInvariant()) { throw (T 'msg_848f08624375' -Arguments @(($rel))) }
             $sourceExpected[$rel.ToLowerInvariant()] = $true
         }
     }
@@ -222,7 +240,7 @@ function Verify-StagingAgainstPreparedManifest {
     foreach ($item in Get-ChildItem -LiteralPath $StageRoot -Force -Recurse -File) {
         $rel = $item.FullName.Substring($base.Length).TrimStart('\','/').Replace('\','/').ToLowerInvariant()
         if ($rel.StartsWith("runtime/")) { continue }
-        if (-not $sourceExpected.ContainsKey($rel)) { throw "TOCTOU: source no manifestado tras copia: $rel" }
+        if (-not $sourceExpected.ContainsKey($rel)) { throw (T 'msg_3b61d162c173' -Arguments @(($rel))) }
     }
 }
 
@@ -232,20 +250,20 @@ function Copy-ProjectFiles {
     $files = @(
         "agent.py", "portable.py", "service.py", "lampctl.py", "sleepnow.py",
         "config.example.json", "config.schema.json", "requirements.lock.txt", "requirements.windows.lock.txt", "requirements.miio.lock.txt",
-        "pyproject.toml", "LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md",
+        "pyproject.toml", "LICENSE", "THIRD_PARTY_NOTICES.md", "README.md", "README.es.md", "CHANGELOG.md", "CHANGELOG.es.md", "SECURITY.md", "SECURITY.es.md", "CONTRIBUTING.md", "CONTRIBUTING.es.md",
         "import-token.ps1", "manual-on.cmd", "manual-off.cmd", "status.cmd", "sync.cmd", "sleep-now.cmd",
-        "enable-automation.ps1", "disable-automation.ps1", "uninstall.ps1", "security-check.ps1"
+        "enable-automation.ps1", "disable-automation.ps1", "uninstall.ps1", "security-check.ps1", "config-gui.ps1", "i18n.ps1", "version.ps1"
     )
     foreach ($file in $files) {
         $src = Join-Path $SourceRoot $file
-        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw "Falta archivo requerido de instalación: $file" }
+        if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { throw (T 'msg_f3e5143111a3' -Arguments @(($file))) }
         Copy-Item -LiteralPath $src -Destination (Join-Path $Destination $file) -Force
     }
-    foreach ($dir in @("mijialamp", "tools")) {
+    foreach ($dir in @("mijialamp", "tools", "docs")) {
         $sourceDir = Join-Path $SourceRoot $dir
         $destinationDir = Join-Path $Destination $dir
         New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-        Get-ChildItem -LiteralPath $sourceDir -File -Recurse -Filter "*.py" | ForEach-Object {
+        Get-ChildItem -LiteralPath $sourceDir -File -Recurse | Where-Object { $_.Extension -in @(".py", ".json", ".md") } | ForEach-Object {
             $relative = $_.FullName.Substring($sourceDir.Length).TrimStart('\','/')
             $target = Join-Path $destinationDir $relative
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
@@ -285,7 +303,7 @@ function Copy-SafeRegularFile {
     if (!(Test-Path -LiteralPath $Source -PathType Leaf)) { return }
     $item = Get-Item -LiteralPath $Source -Force
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "No copio un archivo persistente que sea reparse point: $Source"
+        throw (T 'msg_14e7c226a2e1' -Arguments @(($Source)))
     }
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
@@ -295,7 +313,7 @@ function Assert-RegularDirectoryIfPresent {
     if (-not (Test-Path -LiteralPath $Path)) { return }
     $item = Get-Item -LiteralPath $Path -Force
     if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "Instalación anterior contiene un directorio inesperado/reparse point: $Path"
+        throw (T 'msg_8250f6cea0fc' -Arguments @(($Path)))
     }
 }
 
@@ -317,13 +335,13 @@ function Stop-OldAutomation {
 function Delete-ServiceDefinition {
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
         & sc.exe delete $ServiceName | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo eliminar la definición de $ServiceName" }
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_9d40c95ba6d4' -Arguments @(($ServiceName))) }
         for ($i=0; $i -lt 30; $i++) {
             if (!(Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)) { break }
             Start-Sleep -Milliseconds 200
         }
         if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
-            throw "Windows todavía conserva la definición de $ServiceName"
+            throw (T 'msg_53e4aac104bd' -Arguments @(($ServiceName)))
         }
     }
 }
@@ -331,7 +349,7 @@ function Delete-ServiceDefinition {
 function Disable-ServiceDefinition {
     if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
         & sc.exe config $ServiceName start= disabled | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "No se pudo deshabilitar $ServiceName tras el fallo de instalación" }
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_b3dd8051993e' -Arguments @(($ServiceName))) }
     }
 }
 
@@ -340,18 +358,18 @@ function Install-Service {
     $script = Join-Path $InstallDir "service.py"
     Delete-ServiceDefinition
     & $Python $script --startup auto install
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo instalar $ServiceName" }
-    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" start= delayed-auto | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo configurar LocalService" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_802e26656fad' -Arguments @(($ServiceName))) }
+    & sc.exe config $ServiceName obj= "NT AUTHORITY\LocalService" start= auto | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_33772dcf2cd3') }
     & sc.exe sidtype $ServiceName unrestricted | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo habilitar Service SID" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_b93c92b55a42') }
     # Drop optional token privileges from LocalService. MijiaLamp does not impersonate
     # clients and only needs ordinary file/network access plus traverse checking.
     & sc.exe privs $ServiceName SeChangeNotifyPrivilege | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo limitar RequiredPrivileges del servicio" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_dbc06bae4165') }
     & sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
     & $Python (Join-Path $InstallDir "tools\configure_windows_service.py")
-    if ($LASTEXITCODE -ne 0) { throw "No se pudo completar configuración del servicio" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_e837ec9864a3') }
 }
 
 function Set-SecureAcls {
@@ -404,20 +422,22 @@ function Restore-PreviousInstall {
         Move-Item -LiteralPath $script:Backup -Destination $InstallDir -ErrorAction Stop
         Write-Warning "Archivos anteriores restaurados en $InstallDir."
     }
-    Write-Warning "La automatización no se reinició. Comprobá el estado de Service y Agent, revisá los archivos y repetí la instalación desde una release verificada."
+    Write-Warning (T 'msg_9d2743ef985e')
 }
 
 Assert-OfficialInstallDir
 Assert-Administrator
 if ((Resolve-Path $SourceRoot).Path -eq $InstallDir -or $SourceRoot -like "$InstallDir\*") {
-    throw "Por seguridad transaccional, ejecutá install.ps1 desde la release extraída fuera de $InstallDir."
+    throw (T 'msg_58ab8c73a44c' -Arguments @(($InstallDir)))
 }
+Write-InstallProgress 0 'Comprobando archivos y permisos'
 Verify-PreparedRuntime
+Write-InstallProgress 18 'Archivos comprobados'
 $InteractiveIdentity = Resolve-InteractiveIdentity -Override $InteractiveUser
 $UserName = $InteractiveIdentity.Name
 $UserSid = $InteractiveIdentity.Sid
 Write-Host "== MijiaLamp v$ProjectVersion hardened service install ==" -ForegroundColor Cyan
-Write-Host "Usuario interactivo: $UserName ($UserSid)"
+Write-Host (T 'msg_1ff3ef6d4ebd' -Arguments @(($UserName), ($UserSid)))
 Write-Host "La fase elevada NO usa pip ni Internet." -ForegroundColor Green
 
 try {
@@ -426,9 +446,12 @@ try {
     }
     New-PrivateDirectory -Path $Staging
     $StagingCreated = $true
+    Write-InstallProgress 20 (T 'msg_ec9c6a6905c5')
     Copy-ProjectFiles -Destination $Staging
     Copy-Item -Recurse -Force $PreparedPython (Join-Path $Staging "runtime")
+    Write-InstallProgress 36 (T 'msg_d7f45d0f79bf')
     Verify-StagingAgainstPreparedManifest -StageRoot $Staging
+    Write-InstallProgress 48 (T 'msg_7ba7765586eb')
     foreach ($dir in @("data", "logs", "secrets")) { New-Item -ItemType Directory -Force -Path (Join-Path $Staging $dir) | Out-Null }
 
     # Preserve only known regular files. Do not recursively copy logs or arbitrary
@@ -456,14 +479,20 @@ try {
     Push-Location $Staging
     try {
         & $StagePython -m compileall -q .\mijialamp .\tools .\agent.py .\service.py .\lampctl.py .\sleepnow.py
-        if ($LASTEXITCODE -ne 0) { throw "compileall falló" }
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_4daddb8156bb') }
         & $StagePython .\tools\migrate_legacy_config.py --scope local-machine $DestinationConfig
-        if ($LASTEXITCODE -ne 0) { throw "Falló migración segura de config" }
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_09ff808bb0c3') }
         & $StagePython .\lampctl.py config-check
-        if ($LASTEXITCODE -ne 0) { throw "config.json no pasó validación" }
-        & $StagePython -c "import miio, win32service, win32serviceutil, astral, cryptography, mijialamp; print('runtime-smoke: OK')"
-        if ($LASTEXITCODE -ne 0) { throw "Runtime privado no pasó smoke test" }
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_8c0092965ef6') }
+        # A previous installation may have automation_enabled=true in its saved state.
+        # Keep its other state for recovery, but never start a new installation active
+        # unless -EnableAutomation explicitly requests that after doctor succeeds.
+        & $StagePython -c "from mijialamp.state import StateStore; StateStore().update(automation_enabled=False)"
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_4fd9ac361aaa') }
+        & $StagePython -c "import sys, site, pathlib, miio, win32service, win32serviceutil, astral, cryptography, mijialamp; root = pathlib.Path(sys.executable).resolve().parent.parent; assert site.getusersitepackages() not in sys.path; assert all(pathlib.Path(p).resolve().is_relative_to(root) for p in sys.path); print('runtime-smoke: OK')"
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_320ece8f74da') }
     } finally { Pop-Location }
+    Write-InstallProgress 60 (T 'msg_469318675f10')
 
     # Do not install import caches as mutable executable artifacts. The protected runtime
     # can import source directly and the service has no reason to write into code dirs.
@@ -488,6 +517,7 @@ try {
     }
     Move-Item $Staging $InstallDir
     $Swapped = $true
+    Write-InstallProgress 68 (T 'msg_e1721c328a7c')
 
     $Python = Join-Path $InstallDir "runtime\python.exe"
     $Pythonw = Join-Path $InstallDir "runtime\pythonw.exe"
@@ -497,6 +527,7 @@ try {
     Write-IntegrityManifest -RootPath $InstallDir
     Set-SecureAcls -UserSid $UserSid
     Register-AgentTask -UserName $UserName -Pythonw $Pythonw
+    Write-InstallProgress 78 (T 'msg_c1738417af82')
     Start-Service -Name $ServiceName
 
     $ServiceReady = $false
@@ -505,36 +536,61 @@ try {
         if ($LASTEXITCODE -eq 0) { $ServiceReady = $true; break }
         Start-Sleep -Milliseconds 400
     }
-    if (-not $ServiceReady) { throw "MijiaLampService no respondió por Named Pipe." }
+    if (-not $ServiceReady) { throw (T 'msg_fc784b4c7755') }
+    Write-InstallProgress 84 (T 'msg_5865177baf13')
 
+    if ($EncryptedTokenSource) {
+        $tokenSourceItem = Get-Item -LiteralPath $EncryptedTokenSource -Force
+        if ($tokenSourceItem.PSIsContainer -or $tokenSourceItem.Length -gt 8192 -or
+            ($tokenSourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw (T 'msg_1e71d3b5a69d')
+        }
+        Write-Host (T 'msg_5942ec50db54')
+        & (Join-Path $InstallDir "import-token.ps1") -Mode Service -EncryptedSource $EncryptedTokenSource
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_63d832967a8d') }
+        $ServiceReady = $false
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            & $Python (Join-Path $InstallDir "lampctl.py") service-status *> $null
+            if ($LASTEXITCODE -eq 0) { $ServiceReady = $true; break }
+            Start-Sleep -Milliseconds 400
+        }
+        if (-not $ServiceReady) { throw (T 'msg_7c57fee1a77a') }
+    }
+    Write-InstallProgress 89 (T 'msg_ce1e26e33ee8')
     & (Join-Path $InstallDir "security-check.ps1") -InstallDir $InstallDir -InteractiveUser $UserName
-    if ($LASTEXITCODE -ne 0) { throw "security-check.ps1 detectó una configuración insegura" }
+    if ($LASTEXITCODE -ne 0) { throw (T 'msg_b95d4d442b97') }
 
     if ($CreatedExampleConfig) {
-        Write-Host "IMPORTANTE: editá $InstallDir\config.json con tus datos reales." -ForegroundColor Yellow
+        Write-Host (T 'msg_257d16ede8da' -Arguments @(($InstallDir))) -ForegroundColor Yellow
     }
     if (Test-Path (Join-Path $InstallDir "secrets\token.dpapi.json")) {
-        Write-Host "Token Service existente conservado. Ejecutá doctor antes de habilitar." -ForegroundColor Green
+        Write-Host (T 'msg_a1b20d5425a3') -ForegroundColor Green
     } else {
-        Write-Host "Falta importar token Service: .\import-token.ps1 -Mode Service" -ForegroundColor Yellow
+        Write-Host (T 'msg_a79a9a65580e') -ForegroundColor Yellow
     }
 
+    Write-InstallProgress 95 (T 'msg_68438a6b9007')
     if ($EnableAutomation -and (Test-Path (Join-Path $InstallDir "secrets\token.dpapi.json"))) {
-        & $Python (Join-Path $InstallDir "lampctl.py") doctor
-        if ($LASTEXITCODE -eq 0) { & (Join-Path $InstallDir "enable-automation.ps1") -InstallDir $InstallDir }
+        & (Join-Path $InstallDir "enable-automation.ps1") -InstallDir $InstallDir
+        if ($LASTEXITCODE -ne 0) { throw (T 'msg_b1f936e329bf') }
     } else {
-        Write-Host "Automatización instalada DESHABILITADA por seguridad." -ForegroundColor Yellow
+        Write-Host (T 'msg_3331411241dc') -ForegroundColor Yellow
     }
-    Write-Host "Instalación hardened v$ProjectVersion finalizada." -ForegroundColor Green
+    if ($ShowTray -and -not $EnableAutomation) {
+        Enable-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent" | Out-Null
+        Start-ScheduledTask -TaskPath "\MijiaLamp\" -TaskName "Lamp Agent"
+    }
+    Write-Host (T 'msg_34850f22b786' -Arguments @(($ProjectVersion))) -ForegroundColor Green
+    Write-InstallProgress 100 'Servicio instalado y comprobado'
 } catch {
-    Write-Host "Instalación falló: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host (T 'msg_6cc311e5eec3' -Arguments @(($_.Exception.Message))) -ForegroundColor (T 'msg_ba19e9c3d5f4')
     if ($Swapped -or $Backup) {
         Restore-PreviousInstall
     } elseif ($OldAutomationStopped) {
         # The previous files are still in place; do not execute or resume them after failure.
         try { Stop-Service -Name $ServiceName -Force -ErrorAction Stop } catch { Write-Warning $_.Exception.Message }
         try { Disable-ServiceDefinition } catch { Write-Warning $_.Exception.Message }
-        Write-Warning "La automatización no se reinició. Comprobá el estado de Service y Agent antes de volver a habilitarla."
+        Write-Warning (T 'msg_3f6b286dc974')
     }
     if ($StagingCreated -and (Test-Path -LiteralPath $Staging)) {
         Remove-Item -LiteralPath $Staging -Recurse -Force -ErrorAction SilentlyContinue

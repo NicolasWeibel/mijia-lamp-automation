@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from mijialamp.i18n import tr
 
 SERVICE = "MijiaLampService"
 
@@ -14,7 +18,7 @@ def main() -> int:
     try:
         win32evtlogutil.AddSourceToRegistry("MijiaLamp", eventLogType="Application")
     except Exception as exc:
-        print(f"WARNING: no se pudo registrar Event Viewer source: {exc}")
+        print(tr("msg_760122896e77", exc))
 
     try:
         scm = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
@@ -31,7 +35,7 @@ def main() -> int:
         finally:
             win32service.CloseServiceHandle(scm)
     except Exception as exc:
-        print(f"ERROR: no se pudo configurar preshutdown timeout: {exc}", file=sys.stderr)
+        print(tr("msg_3ccf7b39eee5", exc), file=sys.stderr)
         return 1
     return 0
 

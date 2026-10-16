@@ -1,6 +1,9 @@
 # Troubleshooting
 
-## Primero identificá el modo
+[English](troubleshooting.md) | [Español](es/troubleshooting.md)
+
+
+## Identify the mode first
 
 ### Portable
 
@@ -23,13 +26,13 @@ Portable:
 .\import-token.ps1 -Mode Portable
 ```
 
-Service (Administrador):
+Service (Administrator):
 
 ```powershell
 .\import-token.ps1 -Mode Service
 ```
 
-Si `token-status` muestra un scope distinto al modo elegido, no copies el blob manualmente entre instalaciones: volvé a importarlo con el modo correcto.
+If `token-status` shows a scope different from the selected mode, do not copy the blob manually between installations; import it again using the correct mode.
 
 ## Doctor
 
@@ -45,33 +48,33 @@ Service:
 & ".\runtime\python.exe" .\lampctl.py doctor
 ```
 
-## Service no instala
+## Service installation fails
 
-Antes de abrir PowerShell como Administrador, la release Service debe contener:
+Before opening PowerShell as Administrator, the Service release must contain:
 
 ```text
 prepared-runtime\manifest.json
 prepared-runtime\python\python.exe
 ```
 
-Si no están:
+If they are missing:
 
 ```powershell
-# PowerShell normal
+# Standard PowerShell
 .\prepare-service-runtime.ps1 -Recreate
 ```
 
-Después cerrá esa consola y abrí otra como Administrador para `install.ps1`.
+Then close that console and open another as Administrator to run `install.ps1`.
 
-## Security check falla
+## Security check fails
 
-Ejecutá:
+Run:
 
 ```powershell
 .\security-check.ps1
 ```
 
-No corrijas ACLs otorgando FullControl al usuario. Guardá la salida y revisá `logs\service.log`.
+Do not fix ACLs by granting FullControl to the user. Save the output and inspect `logs\service.log`.
 
 ## Logs
 
@@ -88,7 +91,6 @@ C:\ProgramData\MijiaLamp\logs\service.log
 C:\ProgramData\MijiaLamp\logs\agent.log
 ```
 
-Los logs redactan strings con forma de token miIO, pero igualmente conviene revisarlos antes de publicarlos.
+Logs redact strings that look like miIO tokens, but review them before publishing anyway.
 
-
-> Si estás trabajando desde un clon sin runtime Portable empaquetado, usá `.venv\Scripts\python.exe` en los comandos Portable.
+> If you are working from a clone without the packaged Portable runtime, use `.venv\Scripts\python.exe` in Portable commands.

@@ -1,169 +1,216 @@
 # Changelog
 
-Todos los cambios relevantes se documentan aquí. El proyecto usa versionado semántico y sigue la estructura de Keep a Changelog.
+[English](CHANGELOG.md) | [Español](CHANGELOG.es.md)
+
+All notable changes are documented here. The project uses semantic versioning and follows Keep a Changelog.
+
+## [Unreleased]
+
+## [3.2.0] - 2026-10-13
+
+### Added
+
+- Use `mijialamp/__init__.py` as the single source for the application version across package metadata, PowerShell scripts, test fixtures, and release archives.
+- Group temporary pauses under More options → Pause automatic adjustments, with an explanation that pausing does not itself switch the lamp on or off.
+- The tray shows the active mode, manual/pause countdowns, and runtime availability; controls use clearer names and wait for Service/Portable readiness.
+- Add English and Spanish UI catalogs with language selection before setup and a saved preference for settings, tray, notifications and application errors.
+- Make English the default public documentation and link matching Spanish guides.
+- Include and verify translation catalogs in release packages and test both interfaces.
+
+- Service can optionally use the console display state to turn on the lamp at night before sign-in. Enable with `service_prelogin_display` after verifying behavior on the PC.
+- A Windows graphical wizard installs Portable or Service, configures preferences, and imports the token without commands. The editor also opens from the tray.
+- The wizard can authorize a Xiaomi account with a QR code, choose a device, verify its IP/model/DID over the LAN, and prepare a DPAPI-encrypted token for import without copying secrets.
+- Setup package with both modes and a console-free launcher. Preparation, import, and selected activation are integrated into installation, with one UAC prompt for Service.
+- Simple preferences: worldwide city search with automatic location/time zone, bedtime with calculated dimming, lighting period, and display or unlocked-session tracking. Advanced categories and contextual help are available.
+- Installation progress by verified stage, with percentage and description; messages update while work is in progress. Advanced options have specific names, choices, and help in English and Spanish.
+
+### Fixed
+
+- Settings saves stage a private copy with the original security descriptor and NTFS metadata, then commit with a same-directory rename to avoid Windows ACL merging that duplicates inherited permissions. Regression tests cover repeated saves, non-default groups, inherited/protected/legacy DACLs, alternate streams, and failed-save recovery; comparisons ignore only Windows' auto-inherited bookkeeping flag.
+- Start Service automatically without the delayed-start setting, reducing startup unavailability for tray controls and pre-sign-in lighting.
+- Settings prefer the configured PATH Python over the system launcher when no project runtime exists, keeping validation and city lookup in the environment containing the installed dependencies.
+- Settings validation reads Base64 as bytes, strips an optional UTF-8 BOM, and uses strict decoding independently of Python's console encoding. Regression tests cover accented cities, BOM input, UTF-8 mode, and invalid data.
+- Returning to automatic mode cancels manual ON/OFF as well as pauses and external overrides, invalidating delayed OFF reassertions.
+- First-run Xiaomi onboarding requests and displays the QR before offering device selection; empty caches and malformed device lists cannot create a blank lamp row.
+- The Windows wizard uses guided Back/Next pages and displays accented characters correctly in Windows PowerShell 5.1.
+- QR authorization accepts Xiaomi account hosts `ak.account.xiaomi.com` and `sgp.lp.account.xiaomi.com` while keeping a closed list of HTTPS destinations.
+- Installation keeps the window active and displays incremental output. On completion it shows full progress and prevents repetition or going back; the bar is hidden when continuing. Each retry clears old messages.
+- Continuous profiles preserve the same night across midnight and keep the light dim after bedtime. The pause ends at the next sunrise, including that same morning if sunrise has not happened yet.
+- The interactive Agent reads configuration without trying to create the Service cache's private lock, allowing the tray to start as a standard user.
+- Suspend OFF reuses a recently verified miIO header and avoids `python-miio`'s implicit handshake, whose retries could block for several seconds as Windows cuts the network. Without a prior session, it uses one unicast handshake bounded by the Suspend timeout.
+- The Named Pipe listener starts listening again after a disconnect or transient error instead of leaving Portable running without accepting commands.
+- `sleepnow --require-lamp-off` requires explicit OFF confirmation and discards suspend requests that reach the runtime after the confirmation deadline.
+- The tray's Automatic action re-enables automation as well as removing a pause; previously it could leave automation disabled and screen events in `hold`.
+- The `/24` discovery scan honors the configured per-address timeout; implicit miIO handshakes could hold the control lock for over a minute after Resume.
+- Service reinstalls disable automation before the first start, even if inherited state had it enabled; `-EnableAutomation` retains explicit activation after `doctor` passes.
+
+### Security
+
+- The private Service runtime now fixes `sys.path` through `pythonXY._pth` and copies pywin32 DLLs into the runtime. Preparation and installation reject imports from user `site-packages`; the installer requires a manifest generated with this isolation.
+- The installed city editor searches without Administrator privileges; only validated saving and applying changes is elevated.
 
 ## [3.1.3] - 2026-09-30
 
 ### Changed
 
-- Ruff completo, formato y mypy pasan a ser controles obligatorios de CI y del workflow de release.
-- La documentación de verificación de artefactos identifica el repositorio público real.
+- Full Ruff, formatting, and mypy checks are now required CI and release workflow gates.
+- Artifact verification documentation identifies the actual public repository.
 
 ### Fixed
 
-- La instalación Service en Windows PowerShell 5.1 configura LocalService sin argumentos vacíos, escribe JSON UTF-8 sin BOM y calcula el manifiesto de integridad después de que pywin32 prepare el ejecutable del servicio.
-- La verificación de seguridad distingue permisos de lectura y escritura al revisar el usuario interactivo.
-- Corregido el arranque del Agent/Tray en ambos modos.
-- Corregida la normalización de rutas del manifiesto durante la preparación e instalación Service.
-- El manifiesto de source ya no incluye caches Python que se excluyen del ZIP.
-- El build manual usa un nombre de SBOM seguro cuando la rama contiene `/`.
+- Service installation in Windows PowerShell 5.1 configures LocalService without empty arguments, writes UTF-8 JSON without a BOM, and calculates the integrity manifest after pywin32 prepares the service executable.
+- Security verification distinguishes read and write permissions when checking the interactive user.
+- Fixed Agent/Tray startup in both modes.
+- Fixed manifest path normalization during Service preparation and installation.
+- The source manifest no longer includes Python caches excluded from the ZIP.
+- Manual builds use a safe SBOM name when a branch contains `/`.
 
 ### Security
 
-- Las ACL de los archivos instalados heredan permisos restringidos de sus carpetas; la prueba de Windows comprueba que no queden concesiones amplias en archivos hijos.
-- Los locks fijan hashes SHA-256 de todos los wheels de runtime para Windows x64 y Python 3.10–3.12; Service y Portable usan `pip --require-hashes` al descargar/instalar dependencias.
-- CI valida los locks y reutiliza sus versiones sin hashes para la auditoría de vulnerabilidades y el SBOM.
-- El instalador exige que `install.ps1` figure en el manifiesto verificado y rechaza archivos extra en staging, incluidos scripts de raíz agregados después de preparar el runtime.
-- La preparación local Service y Portable acepta únicamente wheels binarios durante la instalación de dependencias.
-- La instalación y desinstalación Service rechazan rutas personalizadas fuera de `ProgramData\MijiaLamp` para impedir staging en ubicaciones modificables por el usuario y borrados administrativos accidentales.
-- El rollback y la desinstalación Service ya no ejecutan el Python ni `service.py` de una instalación anterior con privilegios de Administrador; ante un fallo se conservan los archivos, pero la automatización permanece detenida hasta una instalación verificada.
-- El instalador Service crea staging con ACL privadas desde el primer instante, valida propietario y permisos antes de ejecutar el runtime preparado y falla si `icacls` no puede proteger un archivo.
-- El directorio de backups se crea o valida antes de mover la instalación anterior; la prueba de Windows ejerce estas comprobaciones de ACL.
-- El workflow verifica hashes, contenido del runtime y código de los ZIPs antes de publicar la release.
-- Documentada la verificación de procedencia de una release oficial antes de elevar permisos.
-- La publicación audita todos los pins de runtime y genera el manifest de wheels a partir del wheelhouse realmente usado.
-- Las pruebas de Windows instalan `tzdata` antes de usar `ZoneInfo`; el tag de release debe coincidir con la versión del proyecto.
-- `python-miio` usa un único pin explícito compartido por preparación, instalación, auditoría y SBOM.
-- El runtime excluye los módulos opcionales `android_backup` y `micloud` de `python-miio`: no intervienen en el control local de la lámpara y no ofrecen wheels para Windows.
+- Installed file ACLs inherit restricted permissions from their folders; the Windows test checks for no broad grants on child files.
+- Locks pin SHA-256 hashes for all Windows x64 runtime wheels and Python 3.10–3.12; Service and Portable use `pip --require-hashes` when downloading/installing dependencies.
+- CI validates locks and reuses their unhashed versions for vulnerability auditing and the SBOM.
+- The installer requires `install.ps1` in the verified manifest and rejects extra staging files, including root scripts added after runtime preparation.
+- Local Service and Portable preparation accepts only binary wheels during dependency installation.
+- Service installation and removal reject custom paths outside `ProgramData\MijiaLamp`, preventing staging in user-modifiable locations and accidental administrative deletion.
+- Service rollback and uninstall no longer run Python or `service.py` from a previous installation with Administrator privileges; on failure, files are preserved and automation remains stopped until a verified install.
+- The Service installer creates staging with private ACLs from the start, validates ownership and permissions before running prepared code, and fails if `icacls` cannot protect a file.
+- The backup directory is created or validated before moving the previous installation; the Windows test exercises these ACL checks.
+- The workflow verifies ZIP hashes, runtime contents, and code before publishing a release.
+- Documented how to verify official release provenance before elevation.
+- Publishing audits all runtime pins and creates the wheel manifest from the wheelhouse actually used.
+- Windows tests install `tzdata` before using `ZoneInfo`; release tag must match the project version.
+- `python-miio` uses one explicit shared pin for preparation, installation, auditing, and SBOM.
+- Runtime excludes `python-miio` optional `android_backup` and `micloud` modules: they are not involved in local lamp control and do not provide Windows wheels.
 
 ## [3.1.2] - 2026-09-30
 
 ### Fixed
 
-- Suspend Portable ejecuta el OFF crítico directamente en el mismo proceso, sin esperar a un worker del Named Pipe.
-- El OFF de Suspend usa la IP ya conocida, sin discovery, sin reintentos y con un timeout dedicado corto (`suspend_off_timeout_seconds`).
-- Suspend ya no elimina `manual_day`, `manual_off` ni overrides externos: son estado lógico temporal que debe sobrevivir a Sleep/Resume.
-- `resume-auto` y `resume-user` incrementan `intent_revision`, invalidando cualquier trabajo iniciado antes de dormir sin inventar Display ON.
-- Los hints de Suspend enviados por el Agent al Service llevan un deadline monotónico; un evento que quedó en cola durante Sleep se descarta como `suspend-off-missed` en lugar de ejecutar un OFF obsoleto después de Resume.
-- Suspend deja de programar un reassert diferido, evitando que un OFF tardío compita con un Display ON real después de Resume.
-- `start-portable.cmd` detecta una instancia Portable ya activa y sale limpiamente en vez de provocar un `agent.lock`/`PermissionError` en el log.
-- Shutdown/Preshutdown conservan el comportamiento fuerte anterior: limpian overrides y mantienen reassert cancelable.
+- Portable Suspend runs critical OFF directly in the same process, without waiting for a Named Pipe worker.
+- Suspend OFF uses the known IP, without discovery, retries, or long waits, and a dedicated short timeout (`suspend_off_timeout_seconds`).
+- Suspend no longer removes `manual_day`, `manual_off`, or external overrides: this temporary logical state must survive Sleep/Resume.
+- `resume-auto` and `resume-user` increment `intent_revision`, invalidating work started before sleep without inventing Display ON.
+- Suspend hints from Agent to Service include a monotonic deadline; an event queued during Sleep is discarded as `suspend-off-missed` rather than issuing a stale OFF after Resume.
+- Suspend no longer schedules deferred reassertion, avoiding a late OFF racing a real Display ON after Resume.
+- `start-portable.cmd` detects an already active Portable instance and exits cleanly instead of causing `agent.lock`/`PermissionError` in the log.
+- Shutdown/Preshutdown keep the stronger previous behavior: clear overrides and retain cancelable reassertion.
 
 ### Added
 
-- `suspend_off_timeout_seconds` (default `0.25`) y `suspend_event_deadline_seconds` (default `0.75`).
-- Pruebas de regresión para OFF síncrono Portable, preservación de overrides, expiración de hints y cancelación de trabajo pre-Suspend.
+- `suspend_off_timeout_seconds` (default `0.25`) and `suspend_event_deadline_seconds` (default `0.75`).
+- Regression tests for synchronous Portable OFF, override preservation, hint expiration, and cancellation of pre-Suspend work.
 
 ## [3.1.1] - 2026-09-29
 
 ### Fixed
 
-- `tools/migrate_legacy_config.py` ahora añade explícitamente la raíz del proyecto a `sys.path` cuando se ejecuta como script directo. Esto corrige `ModuleNotFoundError: No module named 'mijialamp'` durante `setup-portable.ps1` y el flujo equivalente del instalador.
-- Añadida una prueba de regresión que ejecuta el migrador desde un directorio de trabajo ajeno al repositorio, reproduciendo la forma en que PowerShell lo invoca en una instalación real.
+- `tools/migrate_legacy_config.py` now explicitly adds the project root to `sys.path` when run as a direct script. This fixes `ModuleNotFoundError: No module named 'mijialamp'` during `setup-portable.ps1` and the equivalent installer flow.
+- Added a regression test that runs the migrator from a working directory outside the repository, reproducing the way PowerShell invokes it in a real installation.
 
 ## [3.1.0] - 2026-09-29
 
 ### Added
 
-- Modo **Portable** oficial sin Administrador ni Windows Service.
-- Token Portable cifrado con DPAPI `CurrentUser` y Pipe separado por usuario.
-- `setup-portable.ps1`, autostart de usuario, wrappers Portable y comandos `--mode portable`.
-- Modo **Hardened Service** con runtime Python privado bajo `ProgramData`.
-- `prepare-service-runtime.ps1`: descarga/instala dependencias sin elevación, exige wheels binarios, prueba reubicación y genera manifest SHA-256.
-- `security-check.ps1` para auditar cuenta del servicio, ACL, runtime, privilegios, Named Pipe y ausencia de listeners TCP.
-- Releases separadas `MijiaLamp-Portable-*` y `MijiaLamp-Service-*`.
-- La release Portable oficial puede incluir runtime Python autocontenido verificado por `runtime-manifest.json`, por lo que funciona sin Python instalado ni `pip`.
-- Portable acepta `-ConfigPath` y migra tokens plaintext legacy directamente a DPAPI `CurrentUser`.
+- Official Portable mode without Administrator privileges or Windows Service.
+- Portable token encrypted with DPAPI `CurrentUser` and per-user Pipe.
+- `setup-portable.ps1`, user autostart, Portable wrappers, and `--mode portable` commands.
+- Hardened Service mode with a private Python runtime under `ProgramData`.
+- `prepare-service-runtime.ps1` downloads/installs dependencies without elevation, requires binary wheels, tests relocation, and generates a SHA-256 manifest.
+- `security-check.ps1` audits the service account, ACL, runtime, privileges, Named Pipe, and absence of TCP listeners.
+- Separate `MijiaLamp-Portable-*` and `MijiaLamp-Service-*` releases.
+- Official Portable release can include a self-contained Python runtime verified by `runtime-manifest.json`, so it works without installed Python or `pip`.
+- Portable accepts `-ConfigPath` and migrates legacy plaintext tokens directly to DPAPI `CurrentUser`.
 
 ### Security
 
-- La fase elevada de `install.ps1` ya no descarga paquetes ni ejecuta `pip`.
-- El servicio deja de depender de un Python potencialmente modificable bajo `%LOCALAPPDATA%`.
-- `RequiredPrivileges` del servicio se reduce a `SeChangeNotifyPrivilege`.
-- El runtime preparado excluye `site-packages`/Scripts preexistentes del Python origen y elimina herramientas de instalación del runtime final.
-- El instalador verifica que no existan archivos de runtime no manifestados, rechaza reparse points y revalida hashes después de copiar a staging (mitigación TOCTOU).
-- Named Pipe Service restringido al SID exacto del usuario + **Service SID específico**, sin ACE amplia para todos los procesos `LocalService`.
-- `integrity-manifest.json` y `security-check.ps1` detectan alteraciones posteriores de código/runtime protegidos.
-- Staging + swap transaccional + rollback best-effort ante fallos posteriores al reemplazo.
-- DPAPI distingue explícitamente scopes `current-user` y `local-machine`; blobs legacy v2 continúan soportados.
+- Elevated `install.ps1` no longer downloads packages or runs `pip`.
+- Service no longer depends on potentially user-modifiable Python under `%LOCALAPPDATA%`.
+- Service `RequiredPrivileges` reduced to `SeChangeNotifyPrivilege`.
+- Prepared runtime excludes preexisting `site-packages`/Scripts from source Python and removes installation tools from the final runtime.
+- Installer verifies no unmanifested runtime files, rejects reparse points, and rechecks hashes after copying to staging (TOCTOU mitigation).
+- Service Named Pipe restricted to the exact user SID + **dedicated Service SID**, with no broad ACE for all `LocalService` processes.
+- `integrity-manifest.json` and `security-check.ps1` detect later changes to protected code/runtime.
+- Transactional staging + swap + best-effort rollback on failures after replacement.
+- DPAPI explicitly distinguishes `current-user` and `local-machine` scopes; legacy v2 blobs remain supported.
 
 ### Changed
 
-- El modo Portable pasa a ser la forma recomendada para empezar y Service queda como opción de máxima fiabilidad.
-- Los scripts instalados usan `runtime\python.exe`; `.venv` queda reservado al modo Portable/desarrollo.
-- GitHub Release en Windows construye los runtimes preparados para Service y Portable a partir del mismo conjunto de dependencias fijadas.
-- Suite ampliada a 91 tests y gate de cobertura del core elevado a 85%.
+- Portable is now the recommended way to start; Service is the maximum-reliability option.
+- Installed scripts use `runtime\python.exe`; `.venv` is reserved for Portable/development.
+- Windows GitHub Releases build prepared Service and Portable runtimes from the same pinned dependency set.
+- Suite expanded to 91 tests and core coverage gate raised to 85%.
 
 ## [3.0.0] - 2026-09-29
 
-- `enable-automation.ps1` y `disable-automation.ps1` ahora exigen elevación explícita, validan IPC/Doctor y fallan de forma segura ante tareas o servicio inconsistentes.
+- `enable-automation.ps1` and `disable-automation.ps1` now require explicit elevation, validate IPC/Doctor, and fail safely when tasks or service state are inconsistent.
 
 ### Security
 
-- El token y el acceso miIO pasan a un Windows Service ejecutado como `LocalService`; el Agent interactivo ya no puede leer el secreto.
-- Named Pipe local con ACL limitada al usuario autorizado, Service SID específico, SYSTEM y Administradores.
-- Named Pipe concurrente con límite de workers y notificaciones one-way para eventos de Windows.
-- Service SID específico y ACL endurecidas para código, configuración, datos, logs y secretos.
-- Migración automática de tokens plaintext legacy a DPAPI sin imprimirlos.
-- GitHub Actions fijadas por SHA; release con SBOM, hashes y attestations.
+- Token and miIO access moved to a Windows Service running as `LocalService`; interactive Agent can no longer read the secret.
+- Local Named Pipe ACL limited to the authorized user, dedicated Service SID, SYSTEM, and Administrators.
+- Concurrent Named Pipe with bounded workers and one-way notifications for Windows events.
+- Dedicated Service SID and hardened ACLs for code, config, data, logs, and secrets.
+- Automatic migration of legacy plaintext tokens to DPAPI without printing them.
+- GitHub Actions pinned by SHA; release includes SBOM, hashes, and attestations.
 
 ### Fixed
 
-- Eliminada la carrera que permitía a un sync viejo enviar ON después de un Suspend/OFF más reciente mediante `intent_revision` y validación antes de cada acción física.
-- OFF crítico con reassert cancelable; una intención más nueva impide que un reassert viejo apague/encienda incorrectamente.
-- Suspend/Shutdown/Preshutdown ya no dependen de una Scheduled Task iniciada tarde durante el apagado.
-- `PBT_APMRESUMEAUTOMATIC` no inventa presencia ni display ON.
-- Un reinicio del servicio invalida el estado interactivo en lugar de asumir pantalla activa.
-- `SetSuspendState` habilita `SeShutdownPrivilege` explícitamente con prototipos Win32 seguros para x64.
-- `Sleep Now` usa OFF one-way acotado por defecto; `--require-lamp-off` tiene espera total limitada y ya no puede bloquear la suspensión indefinidamente.
-- Agent/CLI dejan de intentar crear/tocar `secrets/` o `data/` del servicio después de endurecer ACL.
-- `device_cache.json` corrupto se pone en cuarentena y no impide el arranque.
-- Discovery incorpora cooldown/exponential backoff para evitar escaneos repetitivos.
-- Heartbeat refresca timestamps de Display/WTS/Presence aunque los valores no cambien, evitando falsos stale durante sesiones largas.
-- Prototipos `ctypes` explícitos evitan truncamiento de HWND/HANDLE en Windows x64.
-- `GUID_SESSION_USER_PRESENCE` pasa a ser opcional: su ausencia no derriba el Agent.
+- Removed race that allowed an old sync to send ON after a newer Suspend/OFF through `intent_revision` and validation before every physical action.
+- Critical OFF uses cancelable reassertion; a newer intent prevents an old reassert from incorrectly changing power.
+- Suspend/Shutdown/Preshutdown no longer depend on a Scheduled Task starting late during shutdown.
+- `PBT_APMRESUMEAUTOMATIC` does not invent presence or display ON.
+- Service restart invalidates interactive state instead of assuming the display is active.
+- `SetSuspendState` explicitly enables `SeShutdownPrivilege` with safe Win32 prototypes for x64.
+- `Sleep Now` uses bounded one-way OFF by default; `--require-lamp-off` has a bounded total wait and cannot block suspension indefinitely.
+- Agent/CLI no longer try to create/touch Service `secrets/` or `data/` after ACL hardening.
+- Corrupt `device_cache.json` is quarantined and does not prevent startup.
+- Discovery adds cooldown/exponential backoff to prevent repeated scans.
+- Heartbeat refreshes Display/WTS/Presence timestamps even when values do not change, preventing false stale state during long sessions.
+- Explicit `ctypes` prototypes prevent HWND/HANDLE truncation on Windows x64.
+- `GUID_SESSION_USER_PRESENCE` is optional: its absence does not crash Agent.
 
 ### Added
 
-- Windows Service con soporte de Preshutdown/Shutdown/Power events.
-- Agent interactivo para Display, WTS Lock/Unlock, User Presence y tray.
-- Heartbeat Agent → Service para recuperar contexto después de reinicios.
-- Búsqueda por MAC usando Windows Neighbor antes de mDNS y `/24`; el importador puede cachear la MAC observada desde `mihome-ctl`.
-- Network-change watcher que invalida throttles de discovery y reconcilia cuando corresponde.
-- Configuración v3 estricta y `config.schema.json`.
-- Política para respetar cambios externos (`enforce`, `respect_for_minutes`, `respect_until_next_profile`).
-- Perfiles nocturnos continuos con interpolación opcional.
-- Tray con ON/OFF/Auto/Pause/Sync y notificaciones de fallos persistentes.
-- Event Viewer además de logs rotativos.
-- Interfaz `LampTransport` para desacoplar `python-miio` y facilitar tests/migraciones futuras.
-- CLI empaquetada `mijialamp`.
-- Ruff, mypy, coverage core, PSScriptAnalyzer, `pip-audit` y matriz Python 3.10–3.12.
-- GPL-3.0-only explícita.
+- Windows Service support for Preshutdown/Shutdown/Power events.
+- Interactive Agent for Display, WTS Lock/Unlock, User Presence, and tray.
+- Agent → Service heartbeat to recover context after restarts.
+- MAC discovery through Windows Neighbor before mDNS and `/24`; importer can cache the MAC observed from `mihome-ctl`.
+- Network-change watcher invalidates discovery throttles and reconciles when appropriate.
+- Strict v3 config and `config.schema.json`.
+- Policy for respecting external changes (`enforce`, `respect_for_minutes`, `respect_until_next_profile`).
+- Continuous nighttime profiles with optional interpolation.
+- Tray with ON/OFF/Auto/Pause/Sync and persistent-failure notifications.
+- Event Viewer support in addition to rotating logs.
+- `LampTransport` interface to decouple `python-miio` and support future tests/migrations.
+- Packaged `mijialamp` CLI.
+- Ruff, mypy, core coverage, PSScriptAnalyzer, `pip-audit`, and Python 3.10–3.12 matrix.
+- Explicit GPL-3.0-only license.
 
 ### Changed
 
-- Se elimina Startup Sync que asumía display ON antes de iniciar sesión.
-- Se eliminan las Scheduled Tasks privilegiadas de Boot/Shutdown; sólo queda `Lamp Agent` al logon.
-- La automatización continúa instalándose deshabilitada hasta que `doctor` pase correctamente.
-- El instalador exige un smoke test real `service-status` del servicio/ACL/Named Pipe antes de finalizar.
-- Configuración v3 rechaza claves desconocidas y el migrador convierte/elimina campos operativos legacy.
-- Backups de migración con posible material sensible se guardan fuera del runtime y quedan ACL sólo para SYSTEM/Administradores; se limpian artefactos legacy conocidos.
+- Removed Startup Sync that assumed display ON before sign-in.
+- Removed privileged Boot/Shutdown Scheduled Tasks; only `Lamp Agent` at logon remains.
+- Automation remains disabled after installation until `doctor` passes.
+- Installer requires a real `service-status` smoke test of service/ACL/Named Pipe before finishing.
+- v3 config rejects unknown keys and the migrator converts/removes legacy operational fields.
+- Migration backups that may contain sensitive material are stored outside the runtime with ACLs limited to SYSTEM/Administrators; known legacy artifacts are cleaned.
 
 ## [2.1.0] - 2026-09-28
 
 ### Added
 
-- Estructura preparada para repositorio público de GitHub.
-- `config.example.json` y exclusión de `config.json` del control de versiones.
-- GitHub Actions, Dependabot, plantillas, documentación y empaquetado de releases.
+- Structure prepared for a public GitHub repository.
+- `config.example.json` and exclusion of `config.json` from version control.
+- GitHub Actions, Dependabot, templates, documentation, and release packaging.
 
 ### Changed
 
-- Instalador preserva configuración local y `import-token.ps1` deja de tener datos de una instalación concreta.
+- Installer preserves local configuration and `import-token.ps1` no longer contains installation-specific data.
 
 ## [2.0.0] - 2026-09-28
 
 ### Added
 
-- Agente único para Display/Resume/Suspend y sincronización periódica.
-- Locks, escrituras atómicas, reconciliación física, discovery limitado, DPAPI y logging rotativo.
+- Single agent for Display/Resume/Suspend and periodic synchronization.
+- Locks, atomic writes, physical reconciliation, bounded discovery, DPAPI, and rotating logs.

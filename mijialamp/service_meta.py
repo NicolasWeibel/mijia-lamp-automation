@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 
+from mijialamp.i18n import tr
+
 from .errors import ConfigError
 from .paths import SERVICE_META_PATH
 
@@ -19,10 +21,10 @@ def load_authorized_user_sid() -> str:
         with open(SERVICE_META_PATH, encoding="utf-8") as fh:
             payload = json.load(fh)
     except FileNotFoundError as exc:
-        raise ConfigError("Falta data/service_meta.json. Reinstalá MijiaLamp v3 como Administrador.") from exc
+        raise ConfigError(tr("msg_ef1d678ce0fb")) from exc
     except (OSError, json.JSONDecodeError) as exc:
-        raise ConfigError("data/service_meta.json no es válido") from exc
+        raise ConfigError(tr("msg_a4437afb2d73")) from exc
     sid = str(payload.get("authorized_user_sid", "")).strip()
     if not _SID_RE.fullmatch(sid):
-        raise ConfigError("authorized_user_sid inválido en service_meta.json")
+        raise ConfigError(tr("msg_391560ad2d41"))
     return sid

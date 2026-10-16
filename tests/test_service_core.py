@@ -132,8 +132,14 @@ class ServiceCoreTests(unittest.TestCase):
         core, controller = self.make_core({"sync_interval_seconds": 60, "on_on_session_unlock": True})
         self.assertIsNone(core.dispatch({"command": "_wake"}))
         self.assertEqual(core.dispatch({"command": "ping"})["service"], "MijiaLampService")
-        with patch("mijialamp.service_core.token_exists", return_value=True):
-            self.assertEqual(core.dispatch({"command": "token-status"}), {"configured": True})
+        with (
+            patch("mijialamp.service_core.token_exists", return_value=True),
+            patch("mijialamp.service_core.token_metadata", return_value={"scope": "current-user"}),
+        ):
+            self.assertEqual(
+                core.dispatch({"command": "token-status"}),
+                {"configured": True, "scope": "current-user"},
+            )
         self.assertEqual(core.dispatch({"command": "status", "physical": False}), {"status": True})
         self.assertEqual(core.dispatch({"command": "doctor"}), {"ok": True})
         self.assertEqual(core.dispatch({"command": "night-status"}), {"night": True})

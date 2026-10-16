@@ -1,33 +1,33 @@
 name: Feature request
-description: Proponer una mejora o nuevo comportamiento
+description: Suggest an improvement or behavior / Proponé una mejora o comportamiento nuevo
 title: "[Feature]: "
 labels: [enhancement]
 body:
   - type: textarea
     id: problem
     attributes:
-      label: Problema o necesidad
-      description: ¿Qué caso de uso querés resolver?
+      label: Problem or need / Problema o necesidad
+      description: What use case would you like to solve? / ¿Qué caso de uso querés resolver?
     validations:
       required: true
 
   - type: textarea
     id: proposal
     attributes:
-      label: Propuesta
-      description: Explicá el comportamiento deseado.
+      label: Proposal / Propuesta
+      description: Describe the desired behavior. / Explicá el comportamiento deseado.
     validations:
       required: true
 
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternativas consideradas
+      label: Alternatives considered / Alternativas consideradas
 
   - type: dropdown
     id: area
     attributes:
-      label: Área
+      label: Area / Área
       options:
         - Windows power/display events
         - miIO / device communication
@@ -35,6 +35,6 @@ body:
         - Installer / Task Scheduler
         - Security / secrets
         - Documentation / tooling
-        - Other
+        - Other / Otro
     validations:
       required: true

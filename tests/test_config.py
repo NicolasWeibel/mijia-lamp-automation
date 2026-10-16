@@ -2,7 +2,9 @@ import copy
 import json
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
+import mijialamp.config as config_mod
 from mijialamp.config import validate_config
 from mijialamp.errors import ConfigError
 
@@ -56,6 +58,11 @@ class ConfigTests(unittest.TestCase):
         cfg["version"] = 2
         with self.assertRaises(ConfigError):
             validate_config(cfg)
+
+    def test_interactive_config_does_not_touch_service_cache(self):
+        with patch.object(config_mod, "_read_cached_ip", side_effect=PermissionError("service data")):
+            cfg = config_mod.load_config(EXAMPLE_CONFIG, include_device_cache=False)
+        self.assertEqual(cfg["lamp_ip"], example_config()["lamp_ip"])
 
     def test_corrupt_device_cache_is_quarantined(self):
         import tempfile
