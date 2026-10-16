@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import threading
+import time
 from collections.abc import Callable
 
 from mijialamp.i18n import tr
@@ -66,18 +67,38 @@ class PipeClient:
         import win32file
         import win32pipe
 
-        win32pipe.WaitNamedPipe(self.pipe_name, max(1, int(timeout * 1000)))
-        handle = win32file.CreateFile(
-            self.pipe_name,
-            win32file.GENERIC_READ | win32file.GENERIC_WRITE,
-            0,
-            None,
-            win32file.OPEN_EXISTING,
-            0,
-            None,
-        )
-        win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
-        return handle
+        deadline = time.monotonic() + max(0.0, timeout)
+        while True:
+            remaining_ms = max(1, int((deadline - time.monotonic()) * 1000))
+            win32pipe.WaitNamedPipe(self.pipe_name, remaining_ms)
+            try:
+                handle = win32file.CreateFile(
+                    self.pipe_name,
+                    win32file.GENERIC_READ | win32file.GENERIC_WRITE,
+                    0,
+                    None,
+                    win32file.OPEN_EXISTING,
+                    0,
+                    None,
+                )
+            except Exception as exc:
+                # WaitNamedPipe does not reserve an instance: another client can
+                # take it before CreateFile. Retry only this connection race,
+                # before sending anything, within the caller's original budget.
+                remaining = deadline - time.monotonic()
+                if getattr(exc, "winerror", None) != 231 or remaining <= 0:
+                    raise
+                time.sleep(min(0.01, remaining))
+                if time.monotonic() >= deadline:
+                    raise
+                continue
+            try:
+                win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
+            except Exception:
+                with contextlib.suppress(Exception):
+                    win32file.CloseHandle(handle)
+                raise
+            return handle
 
     def request(self, command: str, *, timeout: float = 5.0, **params):
         """Request/reply IPC.
